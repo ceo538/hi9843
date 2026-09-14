@@ -25,6 +25,8 @@ $plan = [ordered]@{
     checks = @(
         "scheduled_tasks_present",
         "dashboard_api_reachable",
+        "production_runner_heartbeat_fresh",
+        "production_runner_has_completed_cycle",
         "publication_gate_closed",
         "human_approval_required",
         "machine_credentials_present"
@@ -60,16 +62,31 @@ $kisSecretConfigured = -not [string]::IsNullOrWhiteSpace([Environment]::GetEnvir
 
 $publicationGateClosed = $false
 $humanApprovalRequired = $false
+$runnerHeartbeatFresh = $false
+$runnerCompletedCycle = $false
 $runtimeStatus = $null
+$runnerHeartbeatState = $null
+$runnerHeartbeatAgeSeconds = $null
 if ($null -ne $health) {
     $publicationGateClosed = ($health.publication_allowed -eq $false)
     $humanApprovalRequired = ($health.human_approval_required -eq $true)
-    $runtimeStatus = $health.status
+    $runtimeStatus = [string]$health.status
+    if ($null -ne $health.runner_health) {
+        $runnerHeartbeatFresh = ($health.runner_health.fresh -eq $true)
+        $runnerHeartbeatState = [string]$health.runner_health.state
+        $runnerHeartbeatAgeSeconds = $health.runner_health.age_seconds
+    }
+    $runnerState = $health.runtime.runner
+    if ($null -ne $runnerState) {
+        $runnerCompletedCycle = -not [string]::IsNullOrWhiteSpace([string]$runnerState.last_cycle_at)
+    }
 }
 
 $ok = ($null -ne $runnerTask) -and
       ($null -ne $apiTask) -and
       ($null -ne $health) -and
+      $runnerHeartbeatFresh -and
+      $runnerCompletedCycle -and
       $publicationGateClosed -and
       $humanApprovalRequired -and
       $dartConfigured -and
@@ -95,6 +112,10 @@ $result = [ordered]@{
     }
     runtime = [ordered]@{
         status = $runtimeStatus
+        runner_heartbeat_fresh = $runnerHeartbeatFresh
+        runner_heartbeat_state = $runnerHeartbeatState
+        runner_heartbeat_age_seconds = $runnerHeartbeatAgeSeconds
+        runner_completed_cycle = $runnerCompletedCycle
         publication_gate_closed = $publicationGateClosed
         human_approval_required = $humanApprovalRequired
     }
