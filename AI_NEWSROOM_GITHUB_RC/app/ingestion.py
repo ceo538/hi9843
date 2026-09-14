@@ -1,17 +1,20 @@
 """Persistent ingestion and deterministic duplicate/update classification.
 
 This is the canonical AI NEWSROOM intake store. It records every intake event,
-preserves source provenance, keeps immutable revisions, and classifies a record
-without an LLM as NEW / UPDATE / DUPLICATE. Semantic/recycled-story analysis is
-a later layer and must not overwrite this evidence trail.
+preserves source provenance, keeps immutable revisions, and classifies records
+without an LLM as NEW / UPDATE / DUPLICATE. Exact story identity is separated
+from source metadata so syndication copies can be recognized without losing
+source-specific revision history.
 """
 from __future__ import annotations
 
 import hashlib
 import json
 import os
+import re
 import sqlite3
 import sys
+import unicodedata
 from contextlib import contextmanager
 from datetime import datetime, timezone
 from pathlib import Path
@@ -42,6 +45,7 @@ CREATE TABLE IF NOT EXISTS news_revisions (
     published_at TEXT,
     received_at TEXT NOT NULL,
     content_hash TEXT NOT NULL,
+    story_hash TEXT,
     classification TEXT NOT NULL,
     related_revision_id INTEGER,
     FOREIGN KEY(item_id) REFERENCES news_items(id),
@@ -92,7 +96,7 @@ def _validate_url(url: str) -> str:
             raise ValidationError("url must be http(s) with a hostname")
         if "@" in parts.netloc or parts.username is not None or parts.password is not None:
             raise ValidationError("url must not contain credentials")
-        _ = parts.port  # validates syntax/range
+        _ = parts.port
     except ValueError as exc:
         raise ValidationError("url contains invalid host or port components") from exc
     return url
@@ -127,6 +131,14 @@ def _content_hash(title: str, url: str, body: str, published_at: str | None) -> 
     return hashlib.sha256(framed.encode("utf-8")).hexdigest()
 
 
+def _story_hash(title: str, body: str) -> str:
+    def normalize(value: str) -> str:
+        value = unicodedata.normalize("NFKC", value).casefold()
+        return re.sub(r"\s+", " ", value).strip()
+    framed = json.dumps([normalize(title), normalize(body)], ensure_ascii=False, separators=(",", ":"))
+    return hashlib.sha256(framed.encode("utf-8")).hexdigest()
+
+
 class NewsStore:
     def __init__(self, db_path: Path | str | None = None) -> None:
         self.path = Path(db_path) if db_path is not None else default_db_path()
@@ -150,6 +162,20 @@ class NewsStore:
     def _init_schema(self) -> None:
         with self._connect() as conn:
             conn.executescript(_SCHEMA)
+            columns = {row["name"] for row in conn.execute("PRAGMA table_info(news_revisions)").fetchall()}
+            if "story_hash" not in columns:
+                conn.execute("ALTER TABLE news_revisions ADD COLUMN story_hash TEXT")
+            rows = conn.execute(
+                "SELECT id,title,body FROM news_revisions WHERE story_hash IS NULL OR story_hash=''"
+            ).fetchall()
+            for row in rows:
+                conn.execute(
+                    "UPDATE news_revisions SET story_hash=? WHERE id=?",
+                    (_story_hash(row["title"], row["body"]), int(row["id"])),
+                )
+            conn.execute(
+                "CREATE INDEX IF NOT EXISTS idx_news_rev_story_hash ON news_revisions(story_hash, id DESC)"
+            )
 
     @staticmethod
     def _row(row: sqlite3.Row | None) -> dict | None:
@@ -175,6 +201,7 @@ class NewsStore:
         body = _require_str("body", body, MAX_TEXT, allow_empty=True)
         published_at = _validate_published_at(published_at)
         digest = _content_hash(title, source_url, body, published_at)
+        story_digest = _story_hash(title, body)
         received_at = utc_now_iso()
 
         with self._connect() as conn:
@@ -195,13 +222,13 @@ class NewsStore:
                         (source_type, source_name, external_id, received_at, received_at),
                     )
                     item_id = int(cur.lastrowid)
-                    exact = conn.execute(
-                        "SELECT id FROM news_revisions WHERE content_hash=? ORDER BY id DESC LIMIT 1",
-                        (digest,),
+                    exact_story = conn.execute(
+                        "SELECT id FROM news_revisions WHERE story_hash=? ORDER BY id DESC LIMIT 1",
+                        (story_digest,),
                     ).fetchone()
-                    if exact is not None:
+                    if exact_story is not None:
                         classification = "DUPLICATE"
-                        related_revision_id = int(exact["id"])
+                        related_revision_id = int(exact_story["id"])
                 else:
                     item_id = int(item["id"])
                     latest_id = item["latest_revision_id"]
@@ -218,8 +245,8 @@ class NewsStore:
                             related_revision_id = int(latest_id)
 
                 cur = conn.execute(
-                    "INSERT INTO news_revisions(item_id,title,url,body,published_at,received_at,content_hash,classification,related_revision_id) "
-                    "VALUES (?,?,?,?,?,?,?,?,?)",
+                    "INSERT INTO news_revisions(item_id,title,url,body,published_at,received_at,content_hash,story_hash,classification,related_revision_id) "
+                    "VALUES (?,?,?,?,?,?,?,?,?,?)",
                     (
                         item_id,
                         title,
@@ -228,6 +255,7 @@ class NewsStore:
                         published_at,
                         received_at,
                         digest,
+                        story_digest,
                         classification,
                         related_revision_id,
                     ),
@@ -254,7 +282,7 @@ class NewsStore:
                 """
                 SELECT r.id, r.item_id, i.source_type, i.source_name, i.external_id,
                        r.title, r.url AS source_url, r.body, r.published_at, r.received_at,
-                       r.content_hash, r.classification, r.related_revision_id
+                       r.content_hash, r.story_hash, r.classification, r.related_revision_id
                 FROM news_revisions r
                 JOIN news_items i ON i.id=r.item_id
                 WHERE r.id=?
@@ -270,7 +298,7 @@ class NewsStore:
                 """
                 SELECT r.id, r.item_id, i.source_type, i.source_name, i.external_id,
                        r.title, r.url AS source_url, r.body, r.published_at, r.received_at,
-                       r.content_hash, r.classification, r.related_revision_id
+                       r.content_hash, r.story_hash, r.classification, r.related_revision_id
                 FROM news_revisions r
                 JOIN news_items i ON i.id=r.item_id
                 ORDER BY r.id DESC LIMIT ?
@@ -287,7 +315,7 @@ class NewsStore:
                 SELECT i.id AS item_id, i.source_type, i.source_name, i.external_id,
                        i.latest_revision_id, i.created_at, i.updated_at,
                        r.title, r.url AS source_url, r.body, r.published_at,
-                       r.content_hash, r.classification
+                       r.content_hash, r.story_hash, r.classification
                 FROM news_items i
                 JOIN news_revisions r ON r.id=i.latest_revision_id
                 ORDER BY i.updated_at DESC, i.id DESC LIMIT ?
