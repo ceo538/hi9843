@@ -24,8 +24,15 @@ def main() -> int:
     report_path.parent.mkdir(parents=True, exist_ok=True)
 
     while True:
-        report = runner.run_once(force=args.force)
-        report_path.write_text(json.dumps(report, ensure_ascii=False, indent=2), encoding="utf-8")
+        report = runner.run_once_safe(force=args.force)
+        try:
+            report_path.write_text(json.dumps(report, ensure_ascii=False, indent=2), encoding="utf-8")
+        except OSError as exc:
+            print(json.dumps({
+                "status": "DEGRADED",
+                "errors": {"report_write": type(exc).__name__},
+                "human_approval_required": True,
+            }, ensure_ascii=False), flush=True)
         print(json.dumps({
             "status": report["status"],
             "tasks": sorted((report.get("tasks") or {}).keys()),
