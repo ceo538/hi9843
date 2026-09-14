@@ -1,15 +1,16 @@
 from __future__ import annotations
 
 import time
-from datetime import datetime, timezone
+from datetime import datetime, timedelta, timezone
 from pathlib import Path
 from typing import Any, Callable
-from zoneinfo import ZoneInfo
 
 from app.collectors import OpenDartCollector, collect_rss
 from app.ingestion import NewsStore, default_db_path
 from app.runtime import RuntimeStore
 from app.source_registry import SourceRegistry
+
+KST = timezone(timedelta(hours=9))
 
 
 class SchedulerError(ValueError):
@@ -116,7 +117,7 @@ class CollectorScheduler:
                     "max_entries": source["config"].get("max_entries", 50),
                 })
             elif source["source_type"] == "DART" and dart is None:
-                day = now.astimezone(ZoneInfo("Asia/Seoul")).strftime("%Y%m%d")
+                day = now.astimezone(KST).strftime("%Y%m%d")
                 dart = {
                     "source_key": source["source_key"],
                     "bgn_de": day,
