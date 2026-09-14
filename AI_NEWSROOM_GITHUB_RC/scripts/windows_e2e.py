@@ -82,7 +82,10 @@ try:
 
     queue = requests.get(BASE + "/api/editorial/queue", timeout=5)
     queue.raise_for_status()
-    assert [row["id"] for row in queue.json()["items"]] == [version["id"]]
+    queue_items = queue.json()["items"]
+    assert [row["id"] for row in queue_items] == [version["id"]]
+    assert queue_items[0]["source_name"] == "Windows E2E"
+    assert queue_items[0]["source_title"] == "삼성전자 AI 데이터센터 투자"
 
     with sync_playwright() as pw:
         browser = pw.chromium.launch(headless=True)
