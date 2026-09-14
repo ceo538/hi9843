@@ -47,8 +47,11 @@ def test_runtime_health_exposes_source_and_retry_queue_state(tmp_path):
     assert snapshot["sources"]["due_keys"] == ["test-feed"]
     assert snapshot["queue"]["retryable"] == 1
     assert snapshot["queue"]["exhausted"] == 0
+    assert snapshot["auto_draft_enabled"] is False
+    assert snapshot["articleization_gate_required"] is True
+    assert snapshot["publication_enabled"] is False
+    assert snapshot["delivery_mode"] == "MANUAL_COPY_ONLY"
     assert snapshot["publication_allowed"] is False
-    assert snapshot["human_approval_required"] is True
 
 
 def test_runtime_health_marks_exhausted_queue_failed(tmp_path):
