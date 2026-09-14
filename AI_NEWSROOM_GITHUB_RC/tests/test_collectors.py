@@ -50,6 +50,17 @@ def test_collect_rss_ingests_and_preserves_provenance(tmp_path: Path):
     assert fake.calls[0][0] == "https://example.com/feed.xml"
 
 
+def test_rss_rfc822_date_is_normalized_to_utc(tmp_path: Path):
+    store = NewsStore(tmp_path / "newsroom.db")
+    rss = b"""<rss version='2.0'><channel><title>x</title><item>
+    <guid>g-date</guid><title>Dated item</title><link>https://example.com/date</link>
+    <description>body</description><pubDate>Mon, 14 Sep 2026 12:30:00 +0900</pubDate>
+    </item></channel></rss>"""
+    fake = FakeSession(FakeResponse(content=rss))
+    row = collect_rss(store=store, feed_url="https://example.com/f", source_name="Feed", session=fake)[0]
+    assert row["published_at"] == "2026-09-14T03:30:00+00:00"
+
+
 def test_rss_second_pull_is_duplicate(tmp_path: Path):
     store = NewsStore(tmp_path / "newsroom.db")
     rss = b"""<rss version='2.0'><channel><title>x</title><item>
