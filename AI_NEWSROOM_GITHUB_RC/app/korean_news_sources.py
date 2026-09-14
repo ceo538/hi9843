@@ -2,9 +2,10 @@
 
 Only publisher-operated RSS endpoints that were independently verified are
 activated. AI NEWSROOM stores provenance and links back to the publisher; it does
-not treat RSS text as owned content. Some publishers explicitly limit RSS to
-non-commercial use. Those sources are marked as such and are enabled here only
-because this installation is configured for the user's stated non-commercial use.
+not treat RSS text as owned content or scrape publisher article pages. Some
+publishers explicitly limit RSS to non-commercial use. Those sources are marked
+as such and are enabled here only because this installation is configured for the
+user's stated non-commercial internal use.
 
 The InfoStock partnership audit below is historical: InfoStock's own corporate
 history says it began an HTS-platform distribution partnership with 17 media
@@ -68,11 +69,20 @@ def _source(
 
 
 _NONCOMMERCIAL_NOTE = "Publisher RSS page explicitly permits non-commercial use; this beta is configured for non-commercial internal use."
+_PERSONAL_NONCOMMERCIAL_NOTE = "Publisher RSS page states the feed is for personal/non-commercial subscription; enabled for the user's stated non-commercial internal beta only."
 _INFOSTOCK_2016 = "infostock_hts_partner_2016"
 
 
 KOREAN_BUSINESS_RSS_DEFAULTS = (
-    # Financial News: publisher-operated section RSS.
+    # Major business publishers with publisher-operated section RSS.
+    _source("hankyung-finance", "한국경제", "증권", "https://www.hankyung.com/feed/finance", "hankyung.com", interval_minutes=5),
+    _source("hankyung-economy", "한국경제", "경제", "https://www.hankyung.com/feed/economy", "hankyung.com"),
+    _source("hankyung-it", "한국경제", "IT", "https://www.hankyung.com/feed/it", "hankyung.com"),
+    _source("mk-economy", "매일경제", "경제", "https://www.mk.co.kr/rss/30100041/", "mk.co.kr"),
+    _source("mk-business", "매일경제", "기업·경영", "https://www.mk.co.kr/rss/50100032/", "mk.co.kr"),
+    _source("mk-stock", "매일경제", "증권", "https://www.mk.co.kr/rss/50200011/", "mk.co.kr", interval_minutes=5),
+
+    # Financial News.
     _source("fnnews-economy", "파이낸셜뉴스", "경제", "https://www.fnnews.com/rss/r20/fn_realnews_economy.xml", "fnnews.com"),
     _source("fnnews-finance", "파이낸셜뉴스", "금융", "https://www.fnnews.com/rss/r20/fn_realnews_finance.xml", "fnnews.com"),
     _source("fnnews-stock", "파이낸셜뉴스", "증권", "https://www.fnnews.com/rss/r20/fn_realnews_stock.xml", "fnnews.com", interval_minutes=5),
@@ -108,6 +118,20 @@ KOREAN_BUSINESS_RSS_DEFAULTS = (
     _source("etoday-industry", "이투데이", "산업", "https://rss.etoday.co.kr/eto/industry_news.xml", "etoday.co.kr", rights_status="noncommercial_only", rights_note=_NONCOMMERCIAL_NOTE),
     _source("etoday-economy", "이투데이", "경제", "https://rss.etoday.co.kr/eto/economy_news.xml", "etoday.co.kr", rights_status="noncommercial_only", rights_note=_NONCOMMERCIAL_NOTE),
 
+    # BusinessWatch: public RSS page explicitly limits use to personal/non-commercial subscription.
+    _source("bizwatch-industry", "비즈워치", "산업", "https://news.bizwatch.co.kr/rss/service/industry", "bizwatch.co.kr", rights_status="personal_noncommercial_only", rights_note=_PERSONAL_NONCOMMERCIAL_NOTE),
+    _source("bizwatch-finance", "비즈워치", "경제·금융", "https://news.bizwatch.co.kr/rss/service/finance", "bizwatch.co.kr", rights_status="personal_noncommercial_only", rights_note=_PERSONAL_NONCOMMERCIAL_NOTE),
+    _source("bizwatch-market", "비즈워치", "증권", "https://news.bizwatch.co.kr/rss/service/market", "bizwatch.co.kr", interval_minutes=5, rights_status="personal_noncommercial_only", rights_note=_PERSONAL_NONCOMMERCIAL_NOTE),
+    _source("bizwatch-it-bio", "비즈워치", "IT·바이오", "https://news.bizwatch.co.kr/rss/service/mobile", "bizwatch.co.kr", rights_status="personal_noncommercial_only", rights_note=_PERSONAL_NONCOMMERCIAL_NOTE),
+    _source("bizwatch-governance", "비즈워치", "거버넌스", "https://news.bizwatch.co.kr/rss/service/governance", "bizwatch.co.kr", rights_status="personal_noncommercial_only", rights_note=_PERSONAL_NONCOMMERCIAL_NOTE),
+
+    # DealSite Economy TV: separate public publisher from the premium DealSite service.
+    _source("dealsitetv-economy", "딜사이트경제TV", "경제일반", "https://news.dealsitetv.com/rss/021000.xml", "dealsitetv.com"),
+    _source("dealsitetv-industry", "딜사이트경제TV", "산업", "https://news.dealsitetv.com/rss/001000.xml", "dealsitetv.com"),
+    _source("dealsitetv-stock", "딜사이트경제TV", "증권", "https://news.dealsitetv.com/rss/011000.xml", "dealsitetv.com", interval_minutes=5),
+    _source("dealsitetv-finance", "딜사이트경제TV", "금융", "https://news.dealsitetv.com/rss/005000.xml", "dealsitetv.com"),
+    _source("dealsitetv-it", "딜사이트경제TV", "IT·블록체인", "https://news.dealsitetv.com/rss/016000.xml", "dealsitetv.com"),
+
     # InfoStock 2016 HTS-partner list: activate only partners with verified official RSS.
     _source("inews24-economy", "아이뉴스24", "경제", "https://www.inews24.com/rss/news_economy.xml", "inews24.com", partner_tag=_INFOSTOCK_2016),
     _source("inews24-it", "아이뉴스24", "IT", "https://www.inews24.com/rss/news_it.xml", "inews24.com", partner_tag=_INFOSTOCK_2016),
@@ -133,11 +157,11 @@ INFOSTOCK_2016_PARTNER_AUDIT = (
     {"publisher": "뉴데일리경제", "status": "candidate", "scope": "경제·산업"},
     {"publisher": "에너지경제", "status": "candidate", "scope": "에너지·금융·산업·증권"},
     {"publisher": "게임포커스", "status": "excluded_scope", "scope": "게임"},
-    {"publisher": "보안뉴스", "status": "candidate", "scope": "사이버보안·IT"},
+    {"publisher": "보안뉴스", "status": "candidate", "scope": "사이버보안·IT", "note": "RSS 서비스 표시는 확인했으나 정확한 공식 피드 URL 추가 검증 필요"},
     {"publisher": "EBN", "status": "candidate", "scope": "산업·금융·증권"},
     {"publisher": "데일리팜", "status": "candidate", "scope": "제약·바이오"},
     {"publisher": "매일일보", "status": "candidate", "scope": "경제·산업"},
-    {"publisher": "아시아투데이", "status": "candidate", "scope": "경제·금융·증권·산업·IT"},
+    {"publisher": "아시아투데이", "status": "candidate", "scope": "경제·금융·증권·산업·IT", "note": "RSS 개인 구독 이용 안내는 확인했으나 정확한 섹션 피드 URL 추가 검증 필요"},
     {"publisher": "CEO스코어", "status": "candidate", "scope": "기업·산업·금융·증권"},
     {"publisher": "BS투데이", "status": "candidate", "scope": "identity_reverification_required"},
     {"publisher": "건설경제신문", "status": "candidate", "scope": "건설·인프라", "note": "현재 대한경제 계열/후신 여부 재확인 필요"},
