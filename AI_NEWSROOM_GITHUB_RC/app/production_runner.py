@@ -1,11 +1,14 @@
 from __future__ import annotations
 
+import os
 import uuid
 from datetime import datetime, timedelta, timezone
 from pathlib import Path
 from typing import Any
 
+from app.company_sync import OpenDartCompanySync
 from app.ingestion import default_db_path
+from app.intelligence import IntelligenceStore
 from app.maintenance import DatabaseMaintenance
 from app.market_worker import MarketSnapshotWorker
 from app.newsroom_cycle import NewsroomCycle
@@ -43,6 +46,7 @@ class ProductionRunner:
         maintenance: Any | None = None,
         registry: Any | None = None,
         runtime: Any | None = None,
+        company_sync: Any | None = None,
         backup_dir: Path | str | None = None,
         owner_id: str | None = None,
     ) -> None:
@@ -52,6 +56,9 @@ class ProductionRunner:
         self.newsroom_cycle = newsroom_cycle or NewsroomCycle(self.path)
         self.market_worker = market_worker or MarketSnapshotWorker(self.path)
         self.maintenance = maintenance or DatabaseMaintenance(self.path)
+        self.company_sync = company_sync
+        if self.company_sync is None and os.getenv("DART_API_KEY"):
+            self.company_sync = OpenDartCompanySync(IntelligenceStore(self.path))
         self.backup_dir = Path(backup_dir) if backup_dir is not None else self.path.parent / "backups"
         self.owner_id = owner_id or uuid.uuid4().hex
 
@@ -67,16 +74,23 @@ class ProductionRunner:
                 "status": "NEVER_RUN",
                 "last_newsroom_at": None,
                 "last_market_at": None,
+                "last_company_sync_at": None,
                 "last_integrity_at": None,
                 "last_backup_at": None,
                 "last_cycle_at": None,
+                "company_master_status": "READY" if self.company_sync is not None else "DISABLED_NO_DART_API_KEY",
             }
         value = dict(row["value"])
         value.setdefault("last_newsroom_at", None)
         value.setdefault("last_market_at", None)
+        value.setdefault("last_company_sync_at", None)
         value.setdefault("last_integrity_at", None)
         value.setdefault("last_backup_at", None)
         value.setdefault("last_cycle_at", None)
+        value.setdefault(
+            "company_master_status",
+            "READY" if self.company_sync is not None else "DISABLED_NO_DART_API_KEY",
+        )
         return value
 
     def run_once(
@@ -85,6 +99,7 @@ class ProductionRunner:
         now: datetime | None = None,
         newsroom_interval_minutes: int = 5,
         market_interval_minutes: int = 5,
+        company_sync_interval_minutes: int = 1440,
         integrity_interval_minutes: int = 60,
         backup_interval_minutes: int = 360,
         force: bool = False,
@@ -96,6 +111,7 @@ class ProductionRunner:
         for name, value, minimum in (
             ("newsroom_interval_minutes", newsroom_interval_minutes, 5),
             ("market_interval_minutes", market_interval_minutes, 1),
+            ("company_sync_interval_minutes", company_sync_interval_minutes, 60),
             ("integrity_interval_minutes", integrity_interval_minutes, 5),
             ("backup_interval_minutes", backup_interval_minutes, 30),
         ):
@@ -131,6 +147,21 @@ class ProductionRunner:
                     state["last_market_at"] = stamp
                 except Exception as exc:
                     task_errors["market"] = type(exc).__name__
+
+            if self.company_sync is not None and (
+                force or _due(state.get("last_company_sync_at"), company_sync_interval_minutes, now)
+            ):
+                try:
+                    tasks["company_master"] = self.company_sync.sync()
+                    state["last_company_sync_at"] = stamp
+                    state["company_master_status"] = "SUCCESS"
+                except Exception as exc:
+                    task_errors["company_master"] = type(exc).__name__
+                    state["company_master_status"] = "FAILED"
+            elif self.company_sync is None:
+                state["company_master_status"] = "DISABLED_NO_DART_API_KEY"
+
+            self.runtime.renew_lease("production_runner", self.owner_id, ttl_seconds=900, now=now)
 
             if force or _due(state.get("last_integrity_at"), integrity_interval_minutes, now):
                 try:
