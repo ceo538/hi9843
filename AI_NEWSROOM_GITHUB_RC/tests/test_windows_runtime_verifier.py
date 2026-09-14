@@ -16,6 +16,17 @@ def test_windows_runtime_verifier_checks_tasks_api_and_human_gate():
     assert "Get-ScheduledTask" in text
 
 
+def test_windows_runtime_verifier_requires_fresh_completed_runner_cycle():
+    text = VERIFIER.read_text(encoding="utf-8")
+    assert "production_runner_heartbeat_fresh" in text
+    assert "production_runner_has_completed_cycle" in text
+    assert "$health.runner_health.fresh" in text
+    assert "$runnerState.last_cycle_at" in text
+    assert "$runnerHeartbeatFresh -and" in text
+    assert "$runnerCompletedCycle -and" in text
+    assert "runner_heartbeat_age_seconds" in text
+
+
 def test_windows_runtime_verifier_checks_machine_credentials_without_printing_values():
     text = VERIFIER.read_text(encoding="utf-8")
     assert 'GetEnvironmentVariable("DART_API_KEY", "Machine")' in text
