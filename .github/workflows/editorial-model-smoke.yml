@@ -26,6 +26,7 @@ jobs:
         working-directory: AI_NEWSROOM_GITHUB_RC
     env:
       PYTHONUTF8: '1'
+      PYTHONPATH: .
       AI_NEWSROOM_DB_PATH: reports/editorial-smoke.db
       OPENAI_API_KEY: ${{ secrets.OPENAI_API_KEY }}
       ANTHROPIC_API_KEY: ${{ secrets.ANTHROPIC_API_KEY }}
