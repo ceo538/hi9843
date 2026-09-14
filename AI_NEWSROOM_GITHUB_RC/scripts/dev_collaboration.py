@@ -130,6 +130,7 @@ def post(provider: str, model: str, prompt: str) -> dict[str, Any]:
         url = "https://api.anthropic.com/v1/messages"
         headers = {"x-api-key": key, "anthropic-version": "2023-06-01"}
         payload = {"model": model, "max_tokens": 12000,
+                   "thinking": {"type": "disabled"},
                    "messages": [{"role": "user", "content": prompt}]}
     elif provider == "gemini":
         key = os.environ["GEMINI_API_KEY"]
