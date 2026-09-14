@@ -6,6 +6,7 @@ $ErrorActionPreference = "Stop"
 
 $taskNames = @(
     "AI NEWSROOM - Production Runner",
+    "AI NEWSROOM - Dashboard API",
     "AI NEWSROOM - Newsroom Cycle",
     "AI NEWSROOM - Market Cycle"
 )
