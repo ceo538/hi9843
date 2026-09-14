@@ -81,6 +81,7 @@ $planned = @{
     execution_time_limit = "unlimited"
     runner = "scripts\production_runner.py"
     dashboard = "http://127.0.0.1:$ApiPort/dashboard"
+    start_immediately = $true
 }
 
 if ($DryRun) {
@@ -98,4 +99,8 @@ foreach ($legacy in @("AI NEWSROOM - Newsroom Cycle", "AI NEWSROOM - Market Cycl
 
 Register-ScheduledTask -TaskName $TaskName -InputObject $runnerTask -Force | Out-Null
 Register-ScheduledTask -TaskName $ApiTaskName -InputObject $apiTask -Force | Out-Null
+
+# AtStartup protects reboot recovery; explicit starts make a fresh install usable now.
+Start-ScheduledTask -TaskName $TaskName
+Start-ScheduledTask -TaskName $ApiTaskName
 $planned | ConvertTo-Json -Compress
