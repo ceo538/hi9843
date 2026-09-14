@@ -28,6 +28,16 @@ def test_windows_installer_does_not_embed_credentials():
     assert "KIS_APP_KEY=" not in text
 
 
+def test_windows_installer_preflights_python_storage_and_runtime_verifier():
+    text = INSTALLER.read_text(encoding="utf-8")
+    assert 'import fastapi, uvicorn, requests; import app.production_runner, app.main' in text
+    assert 'GetEnvironmentVariable("AI_NEWSROOM_DB_PATH", "Machine")' in text
+    assert '"C:\\AI_NEWSROOM_DATA\\newsroom.db"' in text
+    assert ".ai-newsroom-write-probe" in text
+    assert "verify_windows_runtime.ps1" in text
+    assert "kis-token.json" in text
+
+
 def test_windows_installer_removes_legacy_split_tasks_before_registering_runner():
     text = INSTALLER.read_text(encoding="utf-8")
     assert "AI NEWSROOM - Newsroom Cycle" in text
