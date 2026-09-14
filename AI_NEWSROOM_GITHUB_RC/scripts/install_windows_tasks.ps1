@@ -3,6 +3,7 @@ param(
     [string]$PythonExe = "",
     [string]$WorkDir = "",
     [ValidateRange(30, 3600)][int]$PollSeconds = 60,
+    [ValidateRange(1024, 65535)][int]$ApiPort = 8000,
     [switch]$DryRun
 )
 
@@ -10,6 +11,7 @@ Set-StrictMode -Version Latest
 $ErrorActionPreference = "Stop"
 
 $TaskName = "AI NEWSROOM - Production Runner"
+$ApiTaskName = "AI NEWSROOM - Dashboard API"
 
 if (-not $WorkDir) {
     $WorkDir = (Resolve-Path (Join-Path $PSScriptRoot "..")).Path
@@ -41,26 +43,44 @@ $settings = New-ScheduledTaskSettingsSet `
     -RestartInterval (New-TimeSpan -Minutes 1) `
     -ExecutionTimeLimit ([TimeSpan]::Zero)
 $trigger = New-ScheduledTaskTrigger -AtStartup
-$action = New-ScheduledTaskAction `
+
+$runnerAction = New-ScheduledTaskAction `
     -Execute $PythonExe `
     -Argument "scripts\production_runner.py --poll-seconds $PollSeconds --report reports\production-runner.json" `
     -WorkingDirectory $WorkDir
-$task = New-ScheduledTask `
-    -Action $action `
+$runnerTask = New-ScheduledTask `
+    -Action $runnerAction `
     -Trigger $trigger `
     -Principal $principal `
     -Settings $settings `
     -Description "AI NEWSROOM single-instance production runtime"
 
+# Keep the operational dashboard/API local-only. Remote exposure must be configured
+# separately behind an authenticated reverse proxy instead of binding 0.0.0.0 here.
+$apiAction = New-ScheduledTaskAction `
+    -Execute $PythonExe `
+    -Argument "-m uvicorn app.main:app --host 127.0.0.1 --port $ApiPort" `
+    -WorkingDirectory $WorkDir
+$apiTask = New-ScheduledTask `
+    -Action $apiAction `
+    -Trigger $trigger `
+    -Principal $principal `
+    -Settings $settings `
+    -Description "AI NEWSROOM local dashboard and API"
+
 $planned = @{
     task_name = $TaskName
+    api_task_name = $ApiTaskName
     poll_seconds = $PollSeconds
+    api_port = $ApiPort
+    api_host = "127.0.0.1"
     work_dir = $WorkDir
     python = $PythonExe
     run_as = "SYSTEM"
     multiple_instances = "IgnoreNew"
     execution_time_limit = "unlimited"
     runner = "scripts\production_runner.py"
+    dashboard = "http://127.0.0.1:$ApiPort/dashboard"
 }
 
 if ($DryRun) {
@@ -76,5 +96,6 @@ foreach ($legacy in @("AI NEWSROOM - Newsroom Cycle", "AI NEWSROOM - Market Cycl
     }
 }
 
-Register-ScheduledTask -TaskName $TaskName -InputObject $task -Force | Out-Null
+Register-ScheduledTask -TaskName $TaskName -InputObject $runnerTask -Force | Out-Null
+Register-ScheduledTask -TaskName $ApiTaskName -InputObject $apiTask -Force | Out-Null
 $planned | ConvertTo-Json -Compress
