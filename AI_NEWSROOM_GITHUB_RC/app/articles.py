@@ -141,7 +141,7 @@ class ArticleStore:
         editor_note = _text("editor_note", editor_note, 5000, allow_empty=True)
         with self._connect() as conn:
             row = conn.execute(
-                "SELECT id,article_id,version_no FROM article_versions WHERE id=?",
+                "SELECT id,article_id,version_no,status FROM article_versions WHERE id=?",
                 (int(version_id),),
             ).fetchone()
             if row is None:
@@ -152,6 +152,8 @@ class ArticleStore:
             ).fetchone()
             if int(row["version_no"]) != int(latest["n"]):
                 raise ArticleError("only the latest article version can be reviewed")
+            if row["status"] not in DRAFT_STATUSES:
+                raise ArticleError("article version has already been reviewed")
             conn.execute(
                 "UPDATE article_versions SET status=?,reviewed_by=?,reviewed_at=?,editor_note=? WHERE id=?",
                 (status, reviewed_by, _now(), editor_note, int(version_id)),
