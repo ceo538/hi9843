@@ -35,6 +35,8 @@ def _event_ids(rows: list[dict[str, Any]]) -> tuple[list[int], list[int]]:
 class CollectorScheduler:
     """Operational collector coordinator with persistent source/run history."""
 
+    _RSS_POLICY_FIELDS = ("allowed_domains", "include_keywords", "exclude_keywords")
+
     def __init__(
         self,
         db_path: Path | str | None = None,
@@ -65,12 +67,16 @@ class CollectorScheduler:
             try:
                 if not isinstance(feed, dict):
                     raise SchedulerError("RSS feed config must be an object")
-                rows = self.rss_collector(
-                    store=self.store,
-                    feed_url=feed["feed_url"],
-                    source_name=feed["source_name"],
-                    max_entries=int(feed.get("max_entries", 50)),
-                )
+                kwargs: dict[str, Any] = {
+                    "store": self.store,
+                    "feed_url": feed["feed_url"],
+                    "source_name": feed["source_name"],
+                    "max_entries": int(feed.get("max_entries", 50)),
+                }
+                for field in self._RSS_POLICY_FIELDS:
+                    if field in feed:
+                        kwargs[field] = feed[field]
+                rows = self.rss_collector(**kwargs)
                 event_ids, actionable = _event_ids(rows)
                 all_event_ids.extend(x for x in event_ids if x not in all_event_ids)
                 actionable_event_ids.extend(x for x in actionable if x not in actionable_event_ids)
@@ -79,13 +85,24 @@ class CollectorScheduler:
                     "type": "RSS",
                     "source_key": feed.get("source_key"),
                     "source": feed["source_name"],
+                    "publisher": feed.get("publisher"),
+                    "section": feed.get("section"),
+                    "scope": feed.get("scope"),
                     "status": "OK",
                     "count": len(rows),
                     "event_ids": event_ids,
                     "actionable_event_ids": actionable,
                 })
             except Exception as exc:
-                results.append({"type": "RSS", "source_key": feed.get("source_key") if isinstance(feed, dict) else None, "source": str(feed.get("source_name", "unknown")) if isinstance(feed, dict) else "invalid", "status": "ERROR", "error": type(exc).__name__})
+                results.append({
+                    "type": "RSS",
+                    "source_key": feed.get("source_key") if isinstance(feed, dict) else None,
+                    "source": str(feed.get("source_name", "unknown")) if isinstance(feed, dict) else "invalid",
+                    "publisher": feed.get("publisher") if isinstance(feed, dict) else None,
+                    "section": feed.get("section") if isinstance(feed, dict) else None,
+                    "status": "ERROR",
+                    "error": type(exc).__name__,
+                })
         if dart:
             try:
                 if not isinstance(dart, dict):
@@ -155,12 +172,20 @@ class CollectorScheduler:
         dart: dict[str, Any] | None = None
         for source in due:
             if source["source_type"] == "RSS":
-                rss_feeds.append({
+                config = source["config"]
+                feed: dict[str, Any] = {
                     "source_key": source["source_key"],
-                    "feed_url": source["config"]["feed_url"],
+                    "feed_url": config["feed_url"],
                     "source_name": source["label"],
-                    "max_entries": source["config"].get("max_entries", 50),
-                })
+                    "max_entries": config.get("max_entries", 50),
+                    "publisher": config.get("publisher"),
+                    "section": config.get("section"),
+                    "scope": config.get("scope"),
+                }
+                for field in self._RSS_POLICY_FIELDS:
+                    if field in config:
+                        feed[field] = config[field]
+                rss_feeds.append(feed)
             elif source["source_type"] == "DART" and dart is None:
                 day = now.astimezone(KST).strftime("%Y%m%d")
                 dart = {
