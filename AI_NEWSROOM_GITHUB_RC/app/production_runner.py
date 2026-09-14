@@ -75,6 +75,7 @@ class ProductionRunner:
                 "last_newsroom_at": None,
                 "last_market_at": None,
                 "last_company_sync_at": None,
+                "last_company_sync_attempt_at": None,
                 "last_integrity_at": None,
                 "last_backup_at": None,
                 "last_cycle_at": None,
@@ -84,6 +85,7 @@ class ProductionRunner:
         value.setdefault("last_newsroom_at", None)
         value.setdefault("last_market_at", None)
         value.setdefault("last_company_sync_at", None)
+        value.setdefault("last_company_sync_attempt_at", None)
         value.setdefault("last_integrity_at", None)
         value.setdefault("last_backup_at", None)
         value.setdefault("last_cycle_at", None)
@@ -93,6 +95,18 @@ class ProductionRunner:
         )
         return value
 
+    @staticmethod
+    def _company_sync_due(
+        state: dict[str, Any],
+        *,
+        now: datetime,
+        success_interval_minutes: int,
+        retry_interval_minutes: int,
+    ) -> bool:
+        if str(state.get("company_master_status") or "").upper() == "FAILED":
+            return _due(state.get("last_company_sync_attempt_at"), retry_interval_minutes, now)
+        return _due(state.get("last_company_sync_at"), success_interval_minutes, now)
+
     def run_once(
         self,
         *,
@@ -100,6 +114,7 @@ class ProductionRunner:
         newsroom_interval_minutes: int = 5,
         market_interval_minutes: int = 5,
         company_sync_interval_minutes: int = 1440,
+        company_sync_retry_minutes: int = 60,
         integrity_interval_minutes: int = 60,
         backup_interval_minutes: int = 360,
         force: bool = False,
@@ -112,6 +127,7 @@ class ProductionRunner:
             ("newsroom_interval_minutes", newsroom_interval_minutes, 5),
             ("market_interval_minutes", market_interval_minutes, 1),
             ("company_sync_interval_minutes", company_sync_interval_minutes, 60),
+            ("company_sync_retry_minutes", company_sync_retry_minutes, 5),
             ("integrity_interval_minutes", integrity_interval_minutes, 5),
             ("backup_interval_minutes", backup_interval_minutes, 30),
         ):
@@ -148,9 +164,14 @@ class ProductionRunner:
                 except Exception as exc:
                     task_errors["market"] = type(exc).__name__
 
-            if self.company_sync is not None and (
-                force or _due(state.get("last_company_sync_at"), company_sync_interval_minutes, now)
-            ):
+            company_due = self.company_sync is not None and self._company_sync_due(
+                state,
+                now=now,
+                success_interval_minutes=company_sync_interval_minutes,
+                retry_interval_minutes=company_sync_retry_minutes,
+            )
+            if self.company_sync is not None and (force or company_due):
+                state["last_company_sync_attempt_at"] = stamp
                 try:
                     tasks["company_master"] = self.company_sync.sync()
                     state["last_company_sync_at"] = stamp
