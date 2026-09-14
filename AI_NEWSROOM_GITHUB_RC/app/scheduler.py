@@ -17,6 +17,21 @@ class SchedulerError(ValueError):
     pass
 
 
+def _event_ids(rows: list[dict[str, Any]]) -> tuple[list[int], list[int]]:
+    all_ids: list[int] = []
+    actionable: list[int] = []
+    for row in rows:
+        try:
+            event_id = int(row["id"])
+        except (KeyError, TypeError, ValueError):
+            continue
+        if event_id not in all_ids:
+            all_ids.append(event_id)
+        if str(row.get("classification") or "").upper() in {"NEW", "UPDATE"} and event_id not in actionable:
+            actionable.append(event_id)
+    return all_ids, actionable
+
+
 class CollectorScheduler:
     """Operational collector coordinator with persistent source/run history."""
 
@@ -44,6 +59,8 @@ class CollectorScheduler:
         started = datetime.now(timezone.utc).isoformat()
         results: list[dict[str, Any]] = []
         total = 0
+        all_event_ids: list[int] = []
+        actionable_event_ids: list[int] = []
         for feed in rss_feeds or []:
             try:
                 if not isinstance(feed, dict):
@@ -54,8 +71,19 @@ class CollectorScheduler:
                     source_name=feed["source_name"],
                     max_entries=int(feed.get("max_entries", 50)),
                 )
+                event_ids, actionable = _event_ids(rows)
+                all_event_ids.extend(x for x in event_ids if x not in all_event_ids)
+                actionable_event_ids.extend(x for x in actionable if x not in actionable_event_ids)
                 total += len(rows)
-                results.append({"type": "RSS", "source_key": feed.get("source_key"), "source": feed["source_name"], "status": "OK", "count": len(rows)})
+                results.append({
+                    "type": "RSS",
+                    "source_key": feed.get("source_key"),
+                    "source": feed["source_name"],
+                    "status": "OK",
+                    "count": len(rows),
+                    "event_ids": event_ids,
+                    "actionable_event_ids": actionable,
+                })
             except Exception as exc:
                 results.append({"type": "RSS", "source_key": feed.get("source_key") if isinstance(feed, dict) else None, "source": str(feed.get("source_name", "unknown")) if isinstance(feed, dict) else "invalid", "status": "ERROR", "error": type(exc).__name__})
         if dart:
@@ -69,8 +97,19 @@ class CollectorScheduler:
                     corp_code=dart.get("corp_code"),
                     page_count=int(dart.get("page_count", 100)),
                 )
+                event_ids, actionable = _event_ids(rows)
+                all_event_ids.extend(x for x in event_ids if x not in all_event_ids)
+                actionable_event_ids.extend(x for x in actionable if x not in actionable_event_ids)
                 total += len(rows)
-                results.append({"type": "DART", "source_key": dart.get("source_key"), "source": "OpenDART", "status": "OK", "count": len(rows)})
+                results.append({
+                    "type": "DART",
+                    "source_key": dart.get("source_key"),
+                    "source": "OpenDART",
+                    "status": "OK",
+                    "count": len(rows),
+                    "event_ids": event_ids,
+                    "actionable_event_ids": actionable,
+                })
             except Exception as exc:
                 results.append({"type": "DART", "source_key": dart.get("source_key") if isinstance(dart, dict) else None, "source": "OpenDART", "status": "ERROR", "error": type(exc).__name__})
 
@@ -87,7 +126,11 @@ class CollectorScheduler:
             source_count=len(results),
             ingested_count=total,
             error_count=errors,
-            details={"results": results},
+            details={
+                "results": results,
+                "event_ids": all_event_ids,
+                "actionable_event_ids": actionable_event_ids,
+            },
         )
         return {
             "run_id": run_id,
@@ -97,6 +140,8 @@ class CollectorScheduler:
             "source_count": len(results),
             "ingested_count": total,
             "error_count": errors,
+            "event_ids": all_event_ids,
+            "actionable_event_ids": actionable_event_ids,
             "results": results,
             "ok": status == "SUCCESS",
         }
