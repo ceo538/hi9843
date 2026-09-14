@@ -9,8 +9,9 @@ from pydantic import BaseModel, Field, HttpUrl
 from app.collectors import CollectorError, OpenDartCollector, collect_rss
 from app.ingestion import NewsStore, ValidationError
 from app.intelligence import IntelligenceError, IntelligenceStore
+from app.market_provider import KISProvider, MarketProviderError
 
-app = FastAPI(title="AI NEWSROOM", version="DEV-4")
+app = FastAPI(title="AI NEWSROOM", version="DEV-5")
 
 
 class NewsIn(BaseModel):
@@ -74,7 +75,7 @@ def validation_error_handler(_request: Request, exc: ValidationError):
 
 @app.get("/api/health")
 def health():
-    return {"status": "ok", "release": "DEV-4"}
+    return {"status": "ok", "release": "DEV-5"}
 
 
 @app.get("/api/system")
@@ -91,9 +92,9 @@ def system():
             "event_company_links",
             "market_snapshots",
             "market_reaction",
+            "market_provider_kis",
         ],
         "planned_modules": [
-            "market_provider_kis",
             "company_discovery",
             "knowledge_graph",
             "supply_chain",
@@ -209,6 +210,17 @@ def record_market_snapshot(payload: SnapshotIn):
             volume=payload.volume,
             source=payload.source,
         )
+    except IntelligenceError as exc:
+        raise HTTPException(status_code=400, detail=str(exc)) from exc
+
+
+@app.post("/api/market/kis/{ticker}", status_code=201)
+def collect_kis_snapshot(ticker: str):
+    try:
+        quote = KISProvider().quote(ticker)
+        return intelligence().record_market_snapshot(**quote)
+    except MarketProviderError as exc:
+        raise HTTPException(status_code=502, detail=str(exc)) from exc
     except IntelligenceError as exc:
         raise HTTPException(status_code=400, detail=str(exc)) from exc
 
