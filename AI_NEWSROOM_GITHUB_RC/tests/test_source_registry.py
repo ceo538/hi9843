@@ -49,6 +49,23 @@ def test_source_can_be_disabled_without_deletion(tmp_path: Path):
     assert "asiae-stock" not in {r["source_key"] for r in registry.list(enabled_only=True)}
 
 
+def test_bootstrap_refresh_preserves_operator_disabled_source(tmp_path: Path):
+    registry = SourceRegistry(tmp_path / "newsroom.db")
+    registry.bootstrap_defaults()
+    registry.set_enabled("asiae-stock", False)
+    registry.set_enabled("opendart", False)
+
+    registry.bootstrap_defaults()
+
+    rows = {row["source_key"]: row for row in registry.list()}
+    assert rows["asiae-stock"]["enabled"] is False
+    assert rows["opendart"]["enabled"] is False
+    assert "hankyung-finance" in rows
+    assert "mk-stock" in rows
+    assert "bizwatch-market" in rows
+    assert "dealsitetv-stock" in rows
+
+
 def test_invalid_feed_url_rejected(tmp_path: Path):
     registry = SourceRegistry(tmp_path / "newsroom.db")
     with pytest.raises(SourceRegistryError):
