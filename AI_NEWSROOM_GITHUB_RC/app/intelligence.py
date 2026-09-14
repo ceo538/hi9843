@@ -45,7 +45,7 @@ CREATE TABLE IF NOT EXISTS event_companies (
     evidence TEXT NOT NULL,
     created_at TEXT NOT NULL,
     UNIQUE(event_id, company_id, relation_type),
-    FOREIGN KEY(event_id) REFERENCES revisions(id),
+    FOREIGN KEY(event_id) REFERENCES news_revisions(id),
     FOREIGN KEY(company_id) REFERENCES companies(id)
 );
 CREATE TABLE IF NOT EXISTS market_snapshots (
@@ -60,8 +60,8 @@ CREATE TABLE IF NOT EXISTS market_snapshots (
     UNIQUE(company_id, observed_at, source),
     FOREIGN KEY(company_id) REFERENCES companies(id)
 );
-CREATE INDEX IF NOT EXISTS idx_market_company_time
-ON market_snapshots(company_id, observed_at);
+CREATE INDEX IF NOT EXISTS idx_event_companies_event ON event_companies(event_id);
+CREATE INDEX IF NOT EXISTS idx_market_company_time ON market_snapshots(company_id, observed_at);
 """
 
 
@@ -96,7 +96,7 @@ def _ticker(value: str) -> str:
 
 class IntelligenceStore:
     def __init__(self, db_path: Path | str | None = None) -> None:
-        self.path = Path(db_path) if db_path else default_db_path()
+        self.path = Path(db_path) if db_path is not None else default_db_path()
         NewsStore(self.path)
         self._init_schema()
 
@@ -131,6 +131,13 @@ class IntelligenceStore:
             row = conn.execute("SELECT * FROM companies WHERE ticker=?", (ticker,)).fetchone()
             return self._row(row) or {}
 
+    def list_companies(self, limit: int = 500) -> list[dict[str, Any]]:
+        if isinstance(limit, bool) or not isinstance(limit, int) or not 1 <= limit <= 5000:
+            raise IntelligenceError("limit must be 1..5000")
+        with self._connect() as conn:
+            rows = conn.execute("SELECT * FROM companies ORDER BY ticker LIMIT ?", (limit,)).fetchall()
+            return [dict(row) for row in rows]
+
     def link_event_company(
         self,
         *,
@@ -154,7 +161,7 @@ class IntelligenceStore:
         if not evidence or len(evidence) > 5000:
             raise IntelligenceError("evidence is required and must be <= 5000 chars")
         with self._connect() as conn:
-            if conn.execute("SELECT 1 FROM revisions WHERE id=?", (int(event_id),)).fetchone() is None:
+            if conn.execute("SELECT 1 FROM news_revisions WHERE id=?", (int(event_id),)).fetchone() is None:
                 raise IntelligenceError("event does not exist")
             company = conn.execute("SELECT id FROM companies WHERE ticker=?", (ticker,)).fetchone()
             if company is None:
@@ -171,6 +178,15 @@ class IntelligenceStore:
                 (int(event_id), ticker, relation_type),
             ).fetchone()
             return self._row(row) or {}
+
+    def event_links(self, event_id: int) -> list[dict[str, Any]]:
+        with self._connect() as conn:
+            rows = conn.execute(
+                "SELECT ec.*, c.ticker, c.name, c.market FROM event_companies ec "
+                "JOIN companies c ON c.id=ec.company_id WHERE ec.event_id=? ORDER BY ec.confidence DESC, c.ticker",
+                (int(event_id),),
+            ).fetchall()
+            return [dict(row) for row in rows]
 
     def record_market_snapshot(
         self,
@@ -213,7 +229,7 @@ class IntelligenceStore:
         if isinstance(horizon_minutes, bool) or not isinstance(horizon_minutes, int) or not 1 <= horizon_minutes <= 1440:
             raise IntelligenceError("horizon_minutes must be 1..1440")
         with self._connect() as conn:
-            event = conn.execute("SELECT received_at FROM revisions WHERE id=?", (int(event_id),)).fetchone()
+            event = conn.execute("SELECT received_at FROM news_revisions WHERE id=?", (int(event_id),)).fetchone()
             if event is None:
                 raise IntelligenceError("event does not exist")
             company = conn.execute("SELECT id FROM companies WHERE ticker=?", (ticker,)).fetchone()
