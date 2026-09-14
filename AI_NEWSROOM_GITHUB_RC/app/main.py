@@ -18,6 +18,7 @@ from app.market_provider import KISProvider, MarketProviderError
 from app.operations import OperationsError, OperationsStore
 from app.orchestrator import NewsroomOrchestrator, OrchestratorError
 from app.pipeline import AnalysisPipeline, PipelineError
+from app.runtime_health import RuntimeHealth
 
 app = FastAPI(title="AI NEWSROOM", version="DEV-8")
 
@@ -145,6 +146,11 @@ def validation_error_handler(_request: Request, exc: ValidationError):
 @app.get("/api/health")
 def health():
     return {"status": "ok", "release": "DEV-8"}
+
+
+@app.get("/api/runtime/status")
+def runtime_status():
+    return RuntimeHealth().snapshot()
 
 
 @app.get("/api/system")
