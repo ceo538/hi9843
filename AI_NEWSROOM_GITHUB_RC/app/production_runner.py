@@ -107,6 +107,54 @@ class ProductionRunner:
             return _due(state.get("last_company_sync_attempt_at"), retry_interval_minutes, now)
         return _due(state.get("last_company_sync_at"), success_interval_minutes, now)
 
+    def run_once_safe(self, **kwargs: Any) -> dict[str, Any]:
+        """Run one cycle without allowing an unexpected top-level exception to kill the service loop."""
+        supplied_now = kwargs.get("now")
+        if isinstance(supplied_now, datetime) and supplied_now.tzinfo is not None:
+            failure_now = supplied_now.astimezone(timezone.utc)
+        else:
+            failure_now = _utc_now()
+        try:
+            return self.run_once(**kwargs)
+        except Exception as exc:
+            error_type = type(exc).__name__
+            stamp = failure_now.isoformat()
+            try:
+                state = self._state()
+            except Exception:
+                state = {}
+            try:
+                failure_count = int(state.get("consecutive_fatal_errors") or 0) + 1
+            except (TypeError, ValueError):
+                failure_count = 1
+            fatal_error = {"type": error_type, "at": stamp}
+            state.update(
+                {
+                    "status": "FAILED",
+                    "owner_id": self.owner_id,
+                    "last_cycle_at": stamp,
+                    "last_tasks": [],
+                    "last_errors": {"runner": error_type},
+                    "last_fatal_error": fatal_error,
+                    "consecutive_fatal_errors": failure_count,
+                }
+            )
+            state_persisted = True
+            try:
+                self.runtime.set_state("production_runner", state, now=failure_now)
+            except Exception:
+                state_persisted = False
+            return {
+                "status": "FAILED",
+                "owner_id": self.owner_id,
+                "tasks": {},
+                "errors": {"runner": error_type},
+                "fatal_error": {**fatal_error, "state_persisted": state_persisted},
+                "state": state,
+                "publication_allowed": False,
+                "human_approval_required": True,
+            }
+
     def run_once(
         self,
         *,
@@ -223,6 +271,7 @@ class ProductionRunner:
                     "last_cycle_at": stamp,
                     "last_tasks": sorted(tasks),
                     "last_errors": task_errors,
+                    "consecutive_fatal_errors": 0,
                 }
             )
             self.runtime.set_state("production_runner", state, now=now)
