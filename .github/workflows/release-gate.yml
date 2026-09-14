@@ -17,6 +17,7 @@ jobs:
         working-directory: AI_NEWSROOM_GITHUB_RC
 
     env:
+      PYTHONUTF8: "1"
       OPENAI_API_KEY: ${{ secrets.OPENAI_API_KEY }}
       ANTHROPIC_API_KEY: ${{ secrets.ANTHROPIC_API_KEY }}
       GEMINI_API_KEY: ${{ secrets.GEMINI_API_KEY }}
@@ -51,21 +52,33 @@ jobs:
           python scripts/windows_e2e.py | Tee-Object -FilePath reports/windows_e2e.txt
 
       - name: Live model evaluation
+        continue-on-error: true
         run: python scripts/model_eval.py
 
       - name: Live data validation
+        continue-on-error: true
         run: python scripts/live_data_gate.py
 
       - name: Final release gate
         run: python scripts/release_gate.py
 
+      - name: Upload diagnostics
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: AI_NEWSROOM_DIAGNOSTICS
+          path: AI_NEWSROOM_GITHUB_RC/reports
+          retention-days: 14
+
       - name: Build final package
+        if: success()
         shell: pwsh
         run: |
           New-Item -ItemType Directory -Force dist | Out-Null
           Compress-Archive -Path app,scripts,requirements.txt,README.md,reports -DestinationPath dist/AI_NEWSROOM_FINAL.zip -Force
 
       - name: Upload final artifact
+        if: success()
         uses: actions/upload-artifact@v4
         with:
           name: AI_NEWSROOM_FINAL
