@@ -116,3 +116,32 @@ class NewsroomWorkQueue:
     def get(self, event_id: int) -> dict[str, Any] | None:
         with self._connect() as conn:
             return self._row(conn.execute("SELECT * FROM newsroom_work_queue WHERE event_id=?", (int(event_id),)).fetchone())
+
+    def stats(self, *, max_attempts: int = 5) -> dict[str, Any]:
+        """Return operational queue counters without exposing article/event content."""
+        if isinstance(max_attempts, bool) or not isinstance(max_attempts, int) or not 1 <= max_attempts <= 20:
+            raise WorkQueueError("max_attempts must be 1..20")
+        with self._connect() as conn:
+            rows = conn.execute(
+                "SELECT status, COUNT(*) AS count FROM newsroom_work_queue GROUP BY status"
+            ).fetchall()
+            counts = {str(row["status"]): int(row["count"]) for row in rows}
+            retryable = int(
+                conn.execute(
+                    "SELECT COUNT(*) FROM newsroom_work_queue WHERE status IN ('PENDING','FAILED') AND attempts < ?",
+                    (max_attempts,),
+                ).fetchone()[0]
+            )
+            exhausted = int(
+                conn.execute(
+                    "SELECT COUNT(*) FROM newsroom_work_queue WHERE status='FAILED' AND attempts >= ?",
+                    (max_attempts,),
+                ).fetchone()[0]
+            )
+        return {
+            "counts": counts,
+            "total": sum(counts.values()),
+            "retryable": retryable,
+            "exhausted": exhausted,
+            "max_attempts": max_attempts,
+        }
