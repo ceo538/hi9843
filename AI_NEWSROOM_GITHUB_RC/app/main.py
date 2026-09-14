@@ -14,9 +14,11 @@ from app.graph import GraphError, KnowledgeGraph
 from app.ingestion import NewsStore, ValidationError
 from app.intelligence import IntelligenceError, IntelligenceStore
 from app.market_provider import KISProvider, MarketProviderError
+from app.operations import OperationsError, OperationsStore
+from app.orchestrator import NewsroomOrchestrator, OrchestratorError
 from app.pipeline import AnalysisPipeline, PipelineError
 
-app = FastAPI(title="AI NEWSROOM", version="DEV-6")
+app = FastAPI(title="AI NEWSROOM", version="DEV-7")
 
 
 class NewsIn(BaseModel):
@@ -90,6 +92,20 @@ class GraphEdgeIn(BaseModel):
     evidence: str = Field(min_length=1, max_length=5000)
 
 
+class WatchlistIn(BaseModel):
+    subject_key: str = Field(min_length=1, max_length=200)
+    subject_type: str = Field(min_length=1, max_length=80)
+    label: str = Field(min_length=1, max_length=200)
+    priority: Literal["P0", "P1", "P2", "P3"] = "P2"
+    reason: str = Field(min_length=1, max_length=2000)
+    enabled: bool = True
+
+
+class FeedbackIn(BaseModel):
+    feedback_type: Literal["USEFUL", "NOT_USEFUL", "WRONG", "NEEDS_REVIEW"]
+    note: str = Field(default="", max_length=5000)
+
+
 def store() -> NewsStore:
     return NewsStore()
 
@@ -106,6 +122,10 @@ def graph_store() -> KnowledgeGraph:
     return KnowledgeGraph()
 
 
+def operations() -> OperationsStore:
+    return OperationsStore()
+
+
 @app.exception_handler(ValidationError)
 def validation_error_handler(_request: Request, exc: ValidationError):
     return JSONResponse(status_code=422, content={"detail": str(exc)})
@@ -113,7 +133,7 @@ def validation_error_handler(_request: Request, exc: ValidationError):
 
 @app.get("/api/health")
 def health():
-    return {"status": "ok", "release": "DEV-6"}
+    return {"status": "ok", "release": "DEV-7"}
 
 
 @app.get("/api/system")
@@ -141,8 +161,13 @@ def system():
             "interview_prep",
             "evidence_grounded_draft",
             "priority_pipeline",
+            "watchlist",
+            "feedback",
+            "audit_trail",
+            "audited_orchestrator",
+            "dashboard_v2",
         ],
-        "planned_modules": ["watchlist", "feedback", "audit", "dashboard_v2", "live_model_editorial_review"],
+        "planned_modules": ["live_model_editorial_review", "production_scheduler", "deployment_hardening"],
     }
 
 
@@ -330,6 +355,14 @@ def analyze_event(event_id: int, horizon_minutes: int = Query(default=60, ge=1, 
         raise HTTPException(status_code=400, detail=str(exc)) from exc
 
 
+@app.get("/api/news/events/{event_id}/workflow")
+def run_workflow(event_id: int, horizon_minutes: int = Query(default=60, ge=1, le=1440)):
+    try:
+        return NewsroomOrchestrator().process(event_id, horizon_minutes=horizon_minutes)
+    except (OrchestratorError, PipelineError, EditorialError) as exc:
+        raise HTTPException(status_code=400, detail=str(exc)) from exc
+
+
 @app.get("/api/news/events/{event_id}/fact-check")
 def fact_check(event_id: int):
     try:
@@ -360,6 +393,37 @@ def draft_article(event_id: int):
         return EditorialEngine().draft_article(event_id)
     except EditorialError as exc:
         raise HTTPException(status_code=400, detail=str(exc)) from exc
+
+
+@app.post("/api/watchlist", status_code=201)
+def upsert_watchlist(payload: WatchlistIn):
+    try:
+        return operations().upsert_watchlist(**payload.model_dump())
+    except OperationsError as exc:
+        raise HTTPException(status_code=400, detail=str(exc)) from exc
+
+
+@app.get("/api/watchlist")
+def list_watchlist(enabled_only: bool = True):
+    return {"items": operations().list_watchlist(enabled_only=enabled_only)}
+
+
+@app.post("/api/news/events/{event_id}/feedback", status_code=201)
+def record_feedback(event_id: int, payload: FeedbackIn):
+    try:
+        return operations().record_feedback(event_id=event_id, feedback_type=payload.feedback_type, note=payload.note)
+    except OperationsError as exc:
+        raise HTTPException(status_code=400, detail=str(exc)) from exc
+
+
+@app.get("/api/news/events/{event_id}/feedback")
+def list_feedback(event_id: int):
+    return {"event_id": event_id, "feedback": operations().feedback_for_event(event_id)}
+
+
+@app.get("/api/news/events/{event_id}/audit")
+def event_audit(event_id: int, limit: int = Query(default=100, ge=1, le=500)):
+    return {"event_id": event_id, "audit": operations().audit_for(entity_type="EVENT", entity_id=event_id, limit=limit)}
 
 
 @app.get("/dashboard", response_class=HTMLResponse)
