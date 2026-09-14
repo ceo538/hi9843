@@ -10,7 +10,7 @@ import calendar
 import os
 from dataclasses import dataclass
 from datetime import datetime, timezone
-from typing import Any
+from typing import Any, Iterable
 from urllib.parse import urlsplit
 
 import feedparser
@@ -61,6 +61,61 @@ def _rss_published_at(entry: Any) -> str | None:
     return None
 
 
+def _clean_terms(name: str, values: Iterable[str] | None, *, max_items: int = 100) -> tuple[str, ...]:
+    if values is None:
+        return ()
+    if isinstance(values, (str, bytes)):
+        raise CollectorError(f"{name} must be a list of strings")
+    try:
+        raw = list(values)
+    except TypeError as exc:
+        raise CollectorError(f"{name} must be a list of strings") from exc
+    if len(raw) > max_items:
+        raise CollectorError(f"{name} has too many values")
+    result: list[str] = []
+    for value in raw:
+        if not isinstance(value, str):
+            raise CollectorError(f"{name} must contain strings")
+        item = value.strip()
+        if not item or len(item) > 200:
+            raise CollectorError(f"{name} contains an invalid value")
+        result.append(item)
+    return tuple(result)
+
+
+def _host_allowed(url: str, allowed_domains: tuple[str, ...]) -> bool:
+    if not allowed_domains:
+        return True
+    try:
+        host = (urlsplit(url).hostname or "").casefold().rstrip(".")
+    except ValueError:
+        return False
+    for raw in allowed_domains:
+        domain = raw.casefold().strip().lstrip(".").rstrip(".")
+        if host == domain or host.endswith("." + domain):
+            return True
+    return False
+
+
+def _entry_allowed(
+    *,
+    title: str,
+    body: str,
+    link: str,
+    allowed_domains: tuple[str, ...],
+    include_keywords: tuple[str, ...],
+    exclude_keywords: tuple[str, ...],
+) -> bool:
+    if not _host_allowed(link, allowed_domains):
+        return False
+    haystack = f"{title}\n{body}".casefold()
+    if exclude_keywords and any(term.casefold() in haystack for term in exclude_keywords):
+        return False
+    if include_keywords and not any(term.casefold() in haystack for term in include_keywords):
+        return False
+    return True
+
+
 def collect_rss(
     *,
     store: NewsStore,
@@ -69,12 +124,21 @@ def collect_rss(
     session: Any = requests,
     timeout: int = 15,
     max_entries: int = 50,
+    allowed_domains: Iterable[str] | None = None,
+    include_keywords: Iterable[str] | None = None,
+    exclude_keywords: Iterable[str] | None = None,
 ) -> list[dict]:
     feed_url = _http_url(feed_url)
     if not source_name or len(source_name) > 200:
         raise CollectorError("source_name is required and must be <= 200 chars")
     if not isinstance(max_entries, int) or isinstance(max_entries, bool) or not 1 <= max_entries <= 100:
         raise CollectorError("max_entries must be 1..100")
+
+    allowed_domains = _clean_terms("allowed_domains", allowed_domains)
+    include_keywords = _clean_terms("include_keywords", include_keywords)
+    exclude_keywords = _clean_terms("exclude_keywords", exclude_keywords)
+    if allowed_domains and not _host_allowed(feed_url, allowed_domains):
+        raise CollectorError("feed_url is outside allowed_domains")
 
     try:
         response = session.get(feed_url, timeout=timeout, allow_redirects=True)
@@ -92,8 +156,17 @@ def collect_rss(
         link = str(entry.get("link") or feed_url).strip()
         if not title:
             continue
-        external_id = str(entry.get("id") or entry.get("guid") or link)
         body = str(entry.get("summary") or entry.get("description") or "")
+        if not _entry_allowed(
+            title=title,
+            body=body,
+            link=link,
+            allowed_domains=allowed_domains,
+            include_keywords=include_keywords,
+            exclude_keywords=exclude_keywords,
+        ):
+            continue
+        external_id = str(entry.get("id") or entry.get("guid") or link)
         results.append(
             store.ingest(
                 source_type="RSS",
