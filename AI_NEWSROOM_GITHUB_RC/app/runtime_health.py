@@ -105,6 +105,11 @@ class RuntimeHealth:
                 "items": sources,
             },
             "queue": queue,
+            "auto_draft_enabled": False,
+            "articleization_gate_required": True,
+            "publication_enabled": False,
+            "delivery_mode": "MANUAL_COPY_ONLY",
+            # Backward-compatible safety flags retained for older tooling.
             "publication_allowed": False,
             "human_approval_required": True,
         }
