@@ -22,17 +22,46 @@ if (-not $PythonExe) {
 }
 
 $runnerScript = Join-Path $WorkDir "scripts\production_runner.py"
+$verifierScript = Join-Path $WorkDir "scripts\verify_windows_runtime.ps1"
 if (-not (Test-Path -LiteralPath $PythonExe)) { throw "Python executable not found: $PythonExe" }
 if (-not (Test-Path -LiteralPath $runnerScript)) { throw "Production runner script not found: $runnerScript" }
+if (-not (Test-Path -LiteralPath $verifierScript)) { throw "Runtime verifier script not found: $verifierScript" }
 
-# SYSTEM does not inherit per-user secrets. Require machine-scoped credentials
-# and never place secret values in task arguments or task metadata.
+# Fail before task registration if the selected interpreter cannot import the
+# production runtime and dashboard dependencies from this checkout.
+Push-Location $WorkDir
+try {
+    $probeOutput = & $PythonExe -c "import fastapi, uvicorn, requests; import app.production_runner, app.main" 2>&1
+    if ($LASTEXITCODE -ne 0) {
+        throw "Python runtime preflight failed: $($probeOutput -join ' ')"
+    }
+}
+finally {
+    Pop-Location
+}
+
+# SYSTEM does not inherit per-user environment variables. Runtime credentials
+# and a custom database path therefore have to be machine-scoped. If no custom
+# database path is configured, both tasks use the deterministic Windows default.
 $dartKey = [Environment]::GetEnvironmentVariable("DART_API_KEY", "Machine")
 $kisKey = [Environment]::GetEnvironmentVariable("KIS_APP_KEY", "Machine")
 $kisSecret = [Environment]::GetEnvironmentVariable("KIS_APP_SECRET", "Machine")
+$machineDbPath = [Environment]::GetEnvironmentVariable("AI_NEWSROOM_DB_PATH", "Machine")
+$dbPath = if ($machineDbPath) { $machineDbPath } else { "C:\AI_NEWSROOM_DATA\newsroom.db" }
+$dbDir = Split-Path -Parent $dbPath
+
 if (-not $DryRun) {
     if (-not $dartKey) { throw "DART_API_KEY must be configured at Machine scope before installing the production runner." }
     if (-not $kisKey -or -not $kisSecret) { throw "KIS_APP_KEY and KIS_APP_SECRET must be configured at Machine scope before installing the production runner." }
+    if (-not $dbDir) { throw "AI_NEWSROOM_DB_PATH must include a parent directory: $dbPath" }
+    New-Item -ItemType Directory -Path $dbDir -Force | Out-Null
+    $writeProbe = Join-Path $dbDir ".ai-newsroom-write-probe"
+    try {
+        Set-Content -LiteralPath $writeProbe -Value "ok" -Encoding ASCII
+    }
+    finally {
+        Remove-Item -LiteralPath $writeProbe -Force -ErrorAction SilentlyContinue
+    }
 }
 
 $principal = New-ScheduledTaskPrincipal -UserId "SYSTEM" -LogonType ServiceAccount -RunLevel Highest
@@ -81,6 +110,11 @@ $planned = @{
     execution_time_limit = "unlimited"
     runner = "scripts\production_runner.py"
     dashboard = "http://127.0.0.1:$ApiPort/dashboard"
+    runtime_status = "http://127.0.0.1:$ApiPort/api/runtime/status"
+    db_path = $dbPath
+    kis_token_cache = (Join-Path $dbDir "kis-token.json")
+    verifier = "scripts\verify_windows_runtime.ps1 -ApiPort $ApiPort"
+    python_preflight = $true
     start_immediately = $true
 }
 
