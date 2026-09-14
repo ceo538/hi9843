@@ -6,6 +6,7 @@ from fastapi import FastAPI, HTTPException, Query, Request
 from fastapi.responses import HTMLResponse, JSONResponse
 from pydantic import BaseModel, Field, HttpUrl
 
+from app.articles import ArticleError, ArticleStore
 from app.collectors import CollectorError, OpenDartCollector, collect_rss
 from app.discovery import CompanyDiscovery, DiscoveryError
 from app.editorial import EditorialEngine, EditorialError
@@ -18,7 +19,7 @@ from app.operations import OperationsError, OperationsStore
 from app.orchestrator import NewsroomOrchestrator, OrchestratorError
 from app.pipeline import AnalysisPipeline, PipelineError
 
-app = FastAPI(title="AI NEWSROOM", version="DEV-7")
+app = FastAPI(title="AI NEWSROOM", version="DEV-8")
 
 
 class NewsIn(BaseModel):
@@ -106,6 +107,12 @@ class FeedbackIn(BaseModel):
     note: str = Field(default="", max_length=5000)
 
 
+class ArticleReviewIn(BaseModel):
+    status: Literal["EDITOR_APPROVED", "REJECTED"]
+    reviewed_by: str = Field(min_length=1, max_length=120)
+    editor_note: str = Field(default="", max_length=5000)
+
+
 def store() -> NewsStore:
     return NewsStore()
 
@@ -126,6 +133,10 @@ def operations() -> OperationsStore:
     return OperationsStore()
 
 
+def articles() -> ArticleStore:
+    return ArticleStore()
+
+
 @app.exception_handler(ValidationError)
 def validation_error_handler(_request: Request, exc: ValidationError):
     return JSONResponse(status_code=422, content={"detail": str(exc)})
@@ -133,7 +144,7 @@ def validation_error_handler(_request: Request, exc: ValidationError):
 
 @app.get("/api/health")
 def health():
-    return {"status": "ok", "release": "DEV-7"}
+    return {"status": "ok", "release": "DEV-8"}
 
 
 @app.get("/api/system")
@@ -161,13 +172,18 @@ def system():
             "interview_prep",
             "evidence_grounded_draft",
             "priority_pipeline",
+            "recycled_news_history",
+            "immutable_article_versions",
+            "editorial_review_queue",
+            "latest_version_review_gate",
             "watchlist",
             "feedback",
             "audit_trail",
             "audited_orchestrator",
+            "live_model_editorial_review",
             "dashboard_v2",
         ],
-        "planned_modules": ["live_model_editorial_review", "production_scheduler", "deployment_hardening"],
+        "planned_modules": ["production_scheduler", "deployment_hardening"],
     }
 
 
@@ -392,6 +408,38 @@ def draft_article(event_id: int):
     try:
         return EditorialEngine().draft_article(event_id)
     except EditorialError as exc:
+        raise HTTPException(status_code=400, detail=str(exc)) from exc
+
+
+@app.get("/api/news/events/{event_id}/articles")
+def article_history(event_id: int):
+    if store().get_event(event_id) is None:
+        raise HTTPException(status_code=404, detail="news event not found")
+    return {"event_id": event_id, "versions": articles().history(event_id)}
+
+
+@app.get("/api/editorial/queue")
+def editorial_queue(limit: int = Query(default=100, ge=1, le=500)):
+    return {"items": articles().editorial_queue(limit)}
+
+
+@app.post("/api/articles/versions/{version_id}/review")
+def review_article_version(version_id: int, payload: ArticleReviewIn):
+    try:
+        reviewed = articles().review(
+            version_id=version_id,
+            status=payload.status,
+            reviewed_by=payload.reviewed_by,
+            editor_note=payload.editor_note,
+        )
+        operations().log(
+            action="EDITOR_REVIEW",
+            entity_type="ARTICLE_VERSION",
+            entity_id=version_id,
+            payload={"status": reviewed["status"], "reviewed_by": reviewed["reviewed_by"]},
+        )
+        return reviewed
+    except ArticleError as exc:
         raise HTTPException(status_code=400, detail=str(exc)) from exc
 
 
