@@ -1,27 +1,87 @@
+from datetime import datetime
 from pathlib import Path
-from fastapi import FastAPI
-from fastapi.responses import HTMLResponse
+from typing import Literal
 
-app = FastAPI(title="AI NEWSROOM", version="RC-1")
+from fastapi import FastAPI, HTTPException, Query
+from fastapi.responses import HTMLResponse
+from pydantic import BaseModel, Field, HttpUrl
+
+from app.storage import NewsStore
+
+app = FastAPI(title="AI NEWSROOM", version="DEV-2")
+
+
+class NewsIn(BaseModel):
+    source_type: Literal["NEWS", "DISCLOSURE", "IR", "RSS", "MANUAL"] = "NEWS"
+    source_name: str = Field(min_length=1, max_length=200)
+    source_url: HttpUrl
+    external_id: str | None = Field(default=None, max_length=300)
+    title: str = Field(min_length=1, max_length=1000)
+    body: str = Field(min_length=1)
+    published_at: datetime | None = None
+
+
+def store() -> NewsStore:
+    return NewsStore()
+
 
 @app.get("/api/health")
 def health():
-    return {"status": "ok", "release": "RC-1"}
+    return {"status": "ok", "release": "DEV-2"}
+
 
 @app.get("/api/system")
 def system():
     return {
         "status": "online",
-        "modules": [
-            "workflow", "duplicate", "company_profile", "knowledge_graph",
-            "supply_chain", "missing_link", "discovery", "evidence",
-            "proposal_queue", "watchlist", "feedback", "audit"
-        ]
+        "implemented_modules": ["persistent_ingestion", "duplicate_baseline"],
+        "planned_modules": [
+            "workflow",
+            "company_profile",
+            "knowledge_graph",
+            "supply_chain",
+            "missing_link",
+            "discovery",
+            "evidence",
+            "proposal_queue",
+            "watchlist",
+            "feedback",
+            "audit",
+        ],
     }
+
+
+@app.post("/api/news/ingest", status_code=201)
+def ingest_news(payload: NewsIn):
+    event = store().ingest(
+        source_type=payload.source_type,
+        source_name=payload.source_name,
+        source_url=str(payload.source_url),
+        external_id=payload.external_id,
+        title=payload.title,
+        body=payload.body,
+        published_at=payload.published_at.isoformat() if payload.published_at else None,
+    )
+    return event
+
+
+@app.get("/api/news/events")
+def list_news_events(limit: int = Query(default=100, ge=1, le=500)):
+    return {"count": len(events := store().list_events(limit)), "events": events}
+
+
+@app.get("/api/news/events/{event_id}")
+def get_news_event(event_id: int):
+    event = store().get_event(event_id)
+    if event is None:
+        raise HTTPException(status_code=404, detail="news event not found")
+    return event
+
 
 @app.get("/dashboard", response_class=HTMLResponse)
 def dashboard():
     return (Path(__file__).parent / "static" / "dashboard.html").read_text(encoding="utf-8")
+
 
 @app.get("/")
 def root():
