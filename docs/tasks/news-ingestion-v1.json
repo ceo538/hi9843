@@ -5,7 +5,7 @@
   "bounded_execution": {
     "initial_model_calls": 2,
     "maximum_model_http_attempts": 4,
-    "claude_max_output_tokens_per_attempt": 6000,
+    "claude_max_output_tokens_per_attempt": 12000,
     "gemini_max_output_tokens_per_attempt": 3000,
     "quota_retry": false,
     "execute_generated_code_with_secrets": false,
@@ -13,5 +13,6 @@
     "production_release": false
   },
   "acceptance": "Model collaboration success is not software acceptance. Resulting code requires separate executable tests and review before integration.",
-  "request_number": 1
+  "request_number": 2,
+  "reason": "First live task ended on a non-end_turn Claude response. It was correctly not accepted; increase bounded output allowance and retain the exact safe stop-reason category. No owner credential or billing error was reported."
 }
