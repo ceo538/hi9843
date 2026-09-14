@@ -16,7 +16,6 @@ RETRYABLE = {500, 502, 503, 504, 529}
 
 
 def request(method, url, **kwargs):
-    last = None
     for attempt in range(2):
         try:
             response = requests.request(method, url, timeout=120, allow_redirects=False, **kwargs)
@@ -35,7 +34,7 @@ def request(method, url, **kwargs):
             response.close()
             raise RuntimeError(f"provider HTTP {status}")
         return response
-    raise RuntimeError(str(last or "retry limit"))
+    raise RuntimeError("retry limit")
 
 
 def openai(prompt: str) -> str:
@@ -44,7 +43,7 @@ def openai(prompt: str) -> str:
     r = request(
         "POST", "https://api.openai.com/v1/responses",
         headers={"Authorization": f"Bearer {key}", "Content-Type": "application/json"},
-        json={"model": model, "input": prompt, "max_output_tokens": 1000},
+        json={"model": model, "input": prompt, "max_output_tokens": 1200},
     )
     data = r.json(); r.close()
     parts = []
@@ -61,7 +60,7 @@ def anthropic(prompt: str) -> str:
     r = request(
         "POST", "https://api.anthropic.com/v1/messages",
         headers={"x-api-key": key, "anthropic-version": "2023-06-01", "content-type": "application/json"},
-        json={"model": model, "max_tokens": 1000, "messages": [{"role": "user", "content": prompt}]},
+        json={"model": model, "max_tokens": 1200, "messages": [{"role": "user", "content": prompt}]},
     )
     data = r.json(); r.close()
     return "".join(x.get("text", "") for x in data.get("content", []) if isinstance(x, dict) and x.get("type") == "text")
@@ -75,7 +74,7 @@ def gemini(prompt: str) -> str:
         headers={"x-goog-api-key": key, "Content-Type": "application/json"},
         json={
             "contents": [{"parts": [{"text": prompt}]}],
-            "generationConfig": {"maxOutputTokens": 1600, "responseMimeType": "application/json", "thinkingConfig": {"thinkingLevel": "low"}},
+            "generationConfig": {"maxOutputTokens": 1800, "responseMimeType": "application/json", "thinkingConfig": {"thinkingLevel": "low"}},
         },
     )
     data = r.json(); r.close()
@@ -103,14 +102,43 @@ def main() -> int:
     packet = build_review_packet(workflow)
     prompt = review_prompt(packet)
     providers = {"openai": openai, "anthropic": anthropic, "gemini": gemini}
-    reviews = {}
-    for name, call in providers.items():
-        reviews[name] = parse_review(call(prompt))
-    report = aggregate_reviews(reviews)
-    report["event_id"] = args.event_id
+    reviews: dict[str, dict] = {}
+    errors: dict[str, str] = {}
+    diagnostics: dict[str, dict] = {}
     OUT.mkdir(parents=True, exist_ok=True)
+
+    for name, call in providers.items():
+        started = time.perf_counter()
+        try:
+            raw = call(prompt)
+            diagnostics[name] = {
+                "latency_s": round(time.perf_counter() - started, 2),
+                "response_chars": len(raw),
+                "response_preview": raw[:500],
+            }
+            reviews[name] = parse_review(raw)
+            print(json.dumps({"provider": name, "status": "OK", "verdict": reviews[name]["verdict"]}, ensure_ascii=False), flush=True)
+        except Exception as exc:
+            errors[name] = f"{type(exc).__name__}: {str(exc)[:500]}"
+            diagnostics.setdefault(name, {})["latency_s"] = round(time.perf_counter() - started, 2)
+            print(json.dumps({"provider": name, "status": "ERROR", "error": errors[name]}, ensure_ascii=False), flush=True)
+
+    report: dict[str, object] = {
+        "event_id": args.event_id,
+        "reviews": reviews,
+        "errors": errors,
+        "diagnostics": diagnostics,
+        "publication_allowed": False,
+        "human_approval_required": True,
+    }
+    if reviews:
+        report.update(aggregate_reviews(reviews))
+    else:
+        report["consensus"] = "BLOCK"
     (OUT / f"event-{args.event_id}.json").write_text(json.dumps(report, ensure_ascii=False, indent=2), encoding="utf-8")
-    print(json.dumps({"event_id": args.event_id, "consensus": report["consensus"]}, ensure_ascii=False))
+    print(json.dumps({"event_id": args.event_id, "consensus": report["consensus"], "errors": list(errors)}, ensure_ascii=False), flush=True)
+    if errors:
+        raise SystemExit("Editorial model review failed for: " + ", ".join(errors))
     return 0 if report["consensus"] != "BLOCK" else 2
 
 
