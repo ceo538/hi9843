@@ -42,6 +42,27 @@ def test_end_to_end_api_packet_stays_human_gated(tmp_path):
     assert workflow["draft"]["status"] == "DRAFT_READY"
     assert workflow["publication_allowed"] is False
     assert workflow["human_approval_required"] is True
+    assert workflow["article_version"]["status"] == "DRAFT_READY"
+
+    history = c.get(f"/api/news/events/{event['id']}/articles")
+    assert history.status_code == 200
+    versions = history.json()["versions"]
+    assert len(versions) == 1
+    version = versions[0]
+    assert version["publication_allowed"] is False
+
+    queue = c.get("/api/editorial/queue").json()["items"]
+    assert [row["id"] for row in queue] == [version["id"]]
+    assert queue[0]["source_title"] == "삼성전자 AI 데이터센터 투자"
+
+    reviewed = c.post(
+        f"/api/articles/versions/{version['id']}/review",
+        json={"status": "EDITOR_APPROVED", "reviewed_by": "desk", "editor_note": "근거 확인"},
+    )
+    assert reviewed.status_code == 200
+    assert reviewed.json()["status"] == "EDITOR_APPROVED"
+    assert reviewed.json()["publication_allowed"] is False
+    assert c.get("/api/editorial/queue").json()["items"] == []
 
 
 def test_watchlist_feedback_and_dashboard_api(tmp_path):
@@ -73,5 +94,7 @@ def test_watchlist_feedback_and_dashboard_api(tmp_path):
         json={"feedback_type": "USEFUL", "note": "후속 취재"},
     ).status_code == 201
     assert c.get(f"/api/news/events/{event['id']}/feedback").json()["feedback"][0]["feedback_type"] == "USEFUL"
-    assert c.get("/api/system").json()["status"] == "online"
+    system = c.get("/api/system").json()
+    assert system["status"] == "online"
+    assert "editorial_review_queue" in system["implemented_modules"]
     assert c.get("/dashboard").status_code == 200
