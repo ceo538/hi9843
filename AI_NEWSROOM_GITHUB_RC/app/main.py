@@ -7,11 +7,16 @@ from fastapi.responses import HTMLResponse, JSONResponse
 from pydantic import BaseModel, Field, HttpUrl
 
 from app.collectors import CollectorError, OpenDartCollector, collect_rss
+from app.discovery import CompanyDiscovery, DiscoveryError
+from app.editorial import EditorialEngine, EditorialError
+from app.evidence import EvidenceError, EvidenceStore
+from app.graph import GraphError, KnowledgeGraph
 from app.ingestion import NewsStore, ValidationError
 from app.intelligence import IntelligenceError, IntelligenceStore
 from app.market_provider import KISProvider, MarketProviderError
+from app.pipeline import AnalysisPipeline, PipelineError
 
-app = FastAPI(title="AI NEWSROOM", version="DEV-5")
+app = FastAPI(title="AI NEWSROOM", version="DEV-6")
 
 
 class NewsIn(BaseModel):
@@ -60,12 +65,45 @@ class DartCollectIn(BaseModel):
     page_count: int = Field(default=100, ge=1, le=100)
 
 
+class EvidenceIn(BaseModel):
+    evidence_type: str
+    source_name: str = Field(min_length=1, max_length=200)
+    source_url: HttpUrl
+    claim: str = Field(min_length=1, max_length=5000)
+    excerpt: str = Field(default="", max_length=10000)
+    verification_status: str
+    confidence: float = Field(ge=0, le=100)
+
+
+class GraphEntityIn(BaseModel):
+    entity_key: str = Field(min_length=1, max_length=200)
+    label: str = Field(min_length=1, max_length=200)
+    entity_type: str = Field(min_length=1, max_length=80)
+
+
+class GraphEdgeIn(BaseModel):
+    source_key: str = Field(min_length=1, max_length=200)
+    target_key: str = Field(min_length=1, max_length=200)
+    relationship_type: str
+    verification_status: str
+    confidence: float = Field(ge=0, le=100)
+    evidence: str = Field(min_length=1, max_length=5000)
+
+
 def store() -> NewsStore:
     return NewsStore()
 
 
 def intelligence() -> IntelligenceStore:
     return IntelligenceStore()
+
+
+def evidence_store() -> EvidenceStore:
+    return EvidenceStore()
+
+
+def graph_store() -> KnowledgeGraph:
+    return KnowledgeGraph()
 
 
 @app.exception_handler(ValidationError)
@@ -75,7 +113,7 @@ def validation_error_handler(_request: Request, exc: ValidationError):
 
 @app.get("/api/health")
 def health():
-    return {"status": "ok", "release": "DEV-5"}
+    return {"status": "ok", "release": "DEV-6"}
 
 
 @app.get("/api/system")
@@ -89,25 +127,22 @@ def system():
             "rss_collector",
             "opendart_collector",
             "company_master",
+            "company_discovery",
             "event_company_links",
             "market_snapshots",
             "market_reaction",
             "market_provider_kis",
-        ],
-        "planned_modules": [
-            "company_discovery",
             "knowledge_graph",
-            "supply_chain",
-            "missing_link",
-            "evidence",
+            "supply_chain_paths",
+            "missing_link_detection",
+            "evidence_store",
             "fact_check",
             "devil_advocate",
-            "interview",
-            "article_writer",
-            "watchlist",
-            "feedback",
-            "audit",
+            "interview_prep",
+            "evidence_grounded_draft",
+            "priority_pipeline",
         ],
+        "planned_modules": ["watchlist", "feedback", "audit", "dashboard_v2", "live_model_editorial_review"],
     }
 
 
@@ -147,12 +182,7 @@ def list_news_items(limit: int = Query(default=100, ge=1, le=500)):
 @app.post("/api/collect/rss")
 def collect_rss_api(payload: RssCollectIn):
     try:
-        events = collect_rss(
-            store=store(),
-            feed_url=str(payload.feed_url),
-            source_name=payload.source_name,
-            max_entries=payload.max_entries,
-        )
+        events = collect_rss(store=store(), feed_url=str(payload.feed_url), source_name=payload.source_name, max_entries=payload.max_entries)
         return {"count": len(events), "events": events}
     except CollectorError as exc:
         raise HTTPException(status_code=502, detail=str(exc)) from exc
@@ -162,10 +192,7 @@ def collect_rss_api(payload: RssCollectIn):
 def collect_dart_api(payload: DartCollectIn):
     try:
         events = OpenDartCollector(store()).collect(
-            bgn_de=payload.bgn_de,
-            end_de=payload.end_de,
-            corp_code=payload.corp_code,
-            page_count=payload.page_count,
+            bgn_de=payload.bgn_de, end_de=payload.end_de, corp_code=payload.corp_code, page_count=payload.page_count
         )
         return {"count": len(events), "events": events}
     except CollectorError as exc:
@@ -175,12 +202,21 @@ def collect_dart_api(payload: DartCollectIn):
 @app.post("/api/companies", status_code=201)
 def register_company(payload: CompanyIn):
     try:
-        return intelligence().register_company(
-            ticker=payload.ticker,
-            name=payload.name,
-            market=payload.market,
-        )
+        return intelligence().register_company(ticker=payload.ticker, name=payload.name, market=payload.market)
     except IntelligenceError as exc:
+        raise HTTPException(status_code=400, detail=str(exc)) from exc
+
+
+@app.get("/api/companies")
+def list_companies(limit: int = Query(default=500, ge=1, le=5000)):
+    return {"companies": intelligence().list_companies(limit)}
+
+
+@app.get("/api/news/events/{event_id}/discovery")
+def discover_companies(event_id: int):
+    try:
+        return {"event_id": event_id, "candidates": CompanyDiscovery().discover_event(event_id)}
+    except DiscoveryError as exc:
         raise HTTPException(status_code=400, detail=str(exc)) from exc
 
 
@@ -226,18 +262,103 @@ def collect_kis_snapshot(ticker: str):
 
 
 @app.get("/api/news/events/{event_id}/reaction")
-def assess_market_reaction(
-    event_id: int,
-    ticker: str = Query(min_length=1, max_length=20),
-    horizon_minutes: int = Query(default=60, ge=1, le=1440),
-):
+def assess_market_reaction(event_id: int, ticker: str = Query(min_length=1, max_length=20), horizon_minutes: int = Query(default=60, ge=1, le=1440)):
     try:
-        return intelligence().assess_reaction(
-            event_id=event_id,
-            ticker=ticker,
-            horizon_minutes=horizon_minutes,
-        )
+        return intelligence().assess_reaction(event_id=event_id, ticker=ticker, horizon_minutes=horizon_minutes)
     except IntelligenceError as exc:
+        raise HTTPException(status_code=400, detail=str(exc)) from exc
+
+
+@app.post("/api/graph/entities", status_code=201)
+def add_graph_entity(payload: GraphEntityIn):
+    try:
+        return graph_store().add_entity(entity_key=payload.entity_key, label=payload.label, entity_type=payload.entity_type)
+    except GraphError as exc:
+        raise HTTPException(status_code=400, detail=str(exc)) from exc
+
+
+@app.post("/api/graph/edges", status_code=201)
+def add_graph_edge(payload: GraphEdgeIn):
+    try:
+        return graph_store().add_edge(
+            source_key=payload.source_key,
+            target_key=payload.target_key,
+            relationship_type=payload.relationship_type,
+            verification_status=payload.verification_status,
+            confidence=payload.confidence,
+            evidence=payload.evidence,
+        )
+    except GraphError as exc:
+        raise HTTPException(status_code=400, detail=str(exc)) from exc
+
+
+@app.get("/api/graph/path")
+def graph_path(source_key: str, target_key: str, max_hops: int = Query(default=4, ge=1, le=6)):
+    try:
+        return graph_store().find_paths(source_key=source_key, target_key=target_key, max_hops=max_hops)
+    except GraphError as exc:
+        raise HTTPException(status_code=400, detail=str(exc)) from exc
+
+
+@app.post("/api/news/events/{event_id}/evidence", status_code=201)
+def add_evidence(event_id: int, payload: EvidenceIn):
+    try:
+        return evidence_store().add(
+            event_id=event_id,
+            evidence_type=payload.evidence_type,
+            source_name=payload.source_name,
+            source_url=str(payload.source_url),
+            claim=payload.claim,
+            excerpt=payload.excerpt,
+            verification_status=payload.verification_status,
+            confidence=payload.confidence,
+        )
+    except EvidenceError as exc:
+        raise HTTPException(status_code=400, detail=str(exc)) from exc
+
+
+@app.get("/api/news/events/{event_id}/evidence")
+def list_evidence(event_id: int):
+    return {"event_id": event_id, "evidence": evidence_store().list_event(event_id)}
+
+
+@app.get("/api/news/events/{event_id}/analysis")
+def analyze_event(event_id: int, horizon_minutes: int = Query(default=60, ge=1, le=1440)):
+    try:
+        return AnalysisPipeline().analyze_event(event_id, horizon_minutes=horizon_minutes)
+    except PipelineError as exc:
+        raise HTTPException(status_code=400, detail=str(exc)) from exc
+
+
+@app.get("/api/news/events/{event_id}/fact-check")
+def fact_check(event_id: int):
+    try:
+        return EditorialEngine().fact_check(event_id)
+    except EditorialError as exc:
+        raise HTTPException(status_code=400, detail=str(exc)) from exc
+
+
+@app.get("/api/news/events/{event_id}/devil-advocate")
+def devil_advocate(event_id: int):
+    try:
+        return EditorialEngine().devil_advocate(event_id)
+    except EditorialError as exc:
+        raise HTTPException(status_code=400, detail=str(exc)) from exc
+
+
+@app.get("/api/news/events/{event_id}/interview")
+def interview_questions(event_id: int):
+    try:
+        return EditorialEngine().interview_questions(event_id)
+    except EditorialError as exc:
+        raise HTTPException(status_code=400, detail=str(exc)) from exc
+
+
+@app.get("/api/news/events/{event_id}/draft")
+def draft_article(event_id: int):
+    try:
+        return EditorialEngine().draft_article(event_id)
+    except EditorialError as exc:
         raise HTTPException(status_code=400, detail=str(exc)) from exc
 
 
