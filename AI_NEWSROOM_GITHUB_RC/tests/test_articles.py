@@ -49,6 +49,20 @@ def test_editor_review_never_sets_publication_allowed(tmp_path):
     assert approved["publication_allowed"] is False
 
 
+def test_review_decision_cannot_be_overwritten(tmp_path):
+    path, event = make_event(tmp_path)
+    store = ArticleStore(path)
+    version = store.save_draft(event_id=event["id"], draft=draft())
+    store.review(version_id=version["id"], status="EDITOR_APPROVED", reviewed_by="desk")
+
+    with pytest.raises(ArticleError, match="already been reviewed"):
+        store.review(version_id=version["id"], status="REJECTED", reviewed_by="other-desk")
+
+    history = store.history(event["id"])
+    assert history[0]["status"] == "EDITOR_APPROVED"
+    assert history[0]["reviewed_by"] == "desk"
+
+
 def test_stale_article_version_cannot_be_approved(tmp_path):
     path, event = make_event(tmp_path)
     store = ArticleStore(path)
@@ -62,6 +76,7 @@ def test_stale_article_version_cannot_be_approved(tmp_path):
     assert [row["id"] for row in queue] == [latest["id"]]
     assert queue[0]["event_id"] == event["id"]
     assert queue[0]["source_title"] == "기사 제목"
+    assert queue[0]["source_name"] == "Test"
 
 
 def test_reviewed_latest_version_leaves_pending_queue(tmp_path):
