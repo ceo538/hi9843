@@ -97,17 +97,18 @@ KOREAN_BUSINESS_RSS_DEFAULTS = (
         include_keywords=("기업", "제약", "바이오", "신약", "임상", "FDA", "허가", "기술이전", "계약", "투자", "상장", "매출", "생산"),
     ),
 
-    # Electronic Times: sector RSS is especially useful for semiconductors/AI/components.
-    _source("etnews-economy", "전자신문", "경제", "http://rss.etnews.com/02.xml", "etnews.com"),
-    _source("etnews-finance", "전자신문", "금융", "http://rss.etnews.com/02027.xml", "etnews.com"),
-    _source("etnews-ai", "전자신문", "AI", "http://rss.etnews.com/04046.xml", "etnews.com"),
-    _source("etnews-mobility", "전자신문", "모빌리티", "http://rss.etnews.com/17066.xml", "etnews.com"),
-    _source("etnews-materials", "전자신문", "소재", "http://rss.etnews.com/06064.xml", "etnews.com"),
-    _source("etnews-parts", "전자신문", "부품", "http://rss.etnews.com/06062.xml", "etnews.com"),
-    _source("etnews-equipment", "전자신문", "장비", "http://rss.etnews.com/06061.xml", "etnews.com"),
-    _source("etnews-heavy-industry", "전자신문", "중공업", "http://rss.etnews.com/06065.xml", "etnews.com"),
-    _source("etnews-bio", "전자신문", "바이오", "http://rss.etnews.com/20042.xml", "etnews.com"),
-    _source("etnews-venture", "전자신문", "중기·벤처", "http://rss.etnews.com/22069.xml", "etnews.com"),
+    # Electronic Times: official section paths served on HTTPS. HTTPS avoids the
+    # port-80 connection timeouts observed from hosted CI runners.
+    _source("etnews-economy", "전자신문", "경제", "https://rss.etnews.com/02.xml", "etnews.com"),
+    _source("etnews-finance", "전자신문", "금융", "https://rss.etnews.com/02027.xml", "etnews.com"),
+    _source("etnews-ai", "전자신문", "AI", "https://rss.etnews.com/04046.xml", "etnews.com"),
+    _source("etnews-mobility", "전자신문", "모빌리티", "https://rss.etnews.com/17066.xml", "etnews.com"),
+    _source("etnews-materials", "전자신문", "소재", "https://rss.etnews.com/06064.xml", "etnews.com"),
+    _source("etnews-parts", "전자신문", "부품", "https://rss.etnews.com/06062.xml", "etnews.com"),
+    _source("etnews-equipment", "전자신문", "장비", "https://rss.etnews.com/06061.xml", "etnews.com"),
+    _source("etnews-heavy-industry", "전자신문", "중공업", "https://rss.etnews.com/06065.xml", "etnews.com"),
+    _source("etnews-bio", "전자신문", "바이오", "https://rss.etnews.com/20042.xml", "etnews.com"),
+    _source("etnews-venture", "전자신문", "중기·벤처", "https://rss.etnews.com/22069.xml", "etnews.com"),
 
     # User confirmed the beta is for non-commercial internal use.
     _source("asiae-stock", "아시아경제", "증권", "https://www.asiae.co.kr/rss/stock.htm", "asiae.co.kr", interval_minutes=5, rights_status="noncommercial_only", rights_note=_NONCOMMERCIAL_NOTE),
