@@ -1,0 +1,17 @@
+{
+  "task_id": "news-ingestion-persistence-v1",
+  "scope": "Claude proposes app/ingestion.py and tests/test_ingestion.py; Gemini independently reviews; coordinator inspects, corrects, and tests separately.",
+  "authorization": "Repository owner requested using connected Claude and Gemini together for AI NEWSROOM development, following earlier authorization for API evaluation costs.",
+  "bounded_execution": {
+    "initial_model_calls": 2,
+    "maximum_model_http_attempts": 4,
+    "claude_max_output_tokens_per_attempt": 6000,
+    "gemini_max_output_tokens_per_attempt": 3000,
+    "quota_retry": false,
+    "execute_generated_code_with_secrets": false,
+    "automatic_merge": false,
+    "production_release": false
+  },
+  "acceptance": "Model collaboration success is not software acceptance. Resulting code requires separate executable tests and review before integration.",
+  "request_number": 1
+}
