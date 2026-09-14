@@ -48,6 +48,9 @@ jobs:
         run: python scripts/runtime_preflight.py
       - name: Backup smoke
         run: python scripts/backup_database.py --destination reports/backups --retain 2
+      - name: Windows task installer dry-run
+        shell: pwsh
+        run: ./scripts/install_windows_tasks.ps1 -DryRun
       - name: Install Chromium
         run: python -m playwright install chromium
       - name: Windows browser E2E
