@@ -2,7 +2,7 @@ from __future__ import annotations
 
 import json
 import sqlite3
-from datetime import datetime, timezone
+from datetime import datetime, timedelta, timezone
 from pathlib import Path
 from typing import Any
 from urllib.parse import urlsplit
@@ -18,6 +18,8 @@ CREATE TABLE IF NOT EXISTS collector_sources (
     config_json TEXT NOT NULL,
     interval_minutes INTEGER NOT NULL,
     enabled INTEGER NOT NULL,
+    last_attempt_at TEXT,
+    last_success_at TEXT,
     created_at TEXT NOT NULL,
     updated_at TEXT NOT NULL
 );
@@ -29,8 +31,12 @@ class SourceRegistryError(ValueError):
     pass
 
 
+def _now_dt() -> datetime:
+    return datetime.now(timezone.utc)
+
+
 def _now() -> str:
-    return datetime.now(timezone.utc).isoformat()
+    return _now_dt().isoformat()
 
 
 def _key(value: str) -> str:
@@ -57,12 +63,21 @@ class SourceRegistry:
         NewsStore(self.path)
         with self._connect() as conn:
             conn.executescript(_SCHEMA)
+            self._migrate(conn)
 
     def _connect(self) -> sqlite3.Connection:
         conn = sqlite3.connect(self.path, timeout=30)
         conn.row_factory = sqlite3.Row
         conn.execute("PRAGMA busy_timeout=30000")
         return conn
+
+    @staticmethod
+    def _migrate(conn: sqlite3.Connection) -> None:
+        columns = {str(row[1]) for row in conn.execute("PRAGMA table_info(collector_sources)").fetchall()}
+        if "last_attempt_at" not in columns:
+            conn.execute("ALTER TABLE collector_sources ADD COLUMN last_attempt_at TEXT")
+        if "last_success_at" not in columns:
+            conn.execute("ALTER TABLE collector_sources ADD COLUMN last_success_at TEXT")
 
     @staticmethod
     def _row(row: sqlite3.Row) -> dict[str, Any]:
@@ -115,12 +130,48 @@ class SourceRegistry:
 
     def list(self, *, enabled_only: bool = False) -> list[dict[str, Any]]:
         sql = "SELECT * FROM collector_sources"
-        args: tuple[Any, ...] = ()
         if enabled_only:
             sql += " WHERE enabled=1"
         sql += " ORDER BY source_type, source_key"
         with self._connect() as conn:
-            return [self._row(row) for row in conn.execute(sql, args).fetchall()]
+            return [self._row(row) for row in conn.execute(sql).fetchall()]
+
+    def due_sources(self, *, now: datetime | None = None) -> list[dict[str, Any]]:
+        now = now or _now_dt()
+        if now.tzinfo is None:
+            raise SourceRegistryError("now must be timezone-aware")
+        now = now.astimezone(timezone.utc)
+        due: list[dict[str, Any]] = []
+        for row in self.list(enabled_only=True):
+            attempted = row.get("last_attempt_at")
+            if not attempted:
+                due.append(row)
+                continue
+            last = datetime.fromisoformat(str(attempted)).astimezone(timezone.utc)
+            if now >= last + timedelta(minutes=int(row["interval_minutes"])):
+                due.append(row)
+        return due
+
+    def mark_attempt(self, source_key: str, *, success: bool, at: datetime | None = None) -> dict[str, Any]:
+        source_key = _key(source_key)
+        at = at or _now_dt()
+        if at.tzinfo is None:
+            raise SourceRegistryError("at must be timezone-aware")
+        stamp = at.astimezone(timezone.utc).isoformat()
+        with self._connect() as conn:
+            if success:
+                cur = conn.execute(
+                    "UPDATE collector_sources SET last_attempt_at=?,last_success_at=?,updated_at=? WHERE source_key=?",
+                    (stamp, stamp, _now(), source_key),
+                )
+            else:
+                cur = conn.execute(
+                    "UPDATE collector_sources SET last_attempt_at=?,updated_at=? WHERE source_key=?",
+                    (stamp, _now(), source_key),
+                )
+            if cur.rowcount != 1:
+                raise SourceRegistryError("source does not exist")
+            return self._row(conn.execute("SELECT * FROM collector_sources WHERE source_key=?", (source_key,)).fetchone())
 
     def set_enabled(self, source_key: str, enabled: bool) -> dict[str, Any]:
         source_key = _key(source_key)

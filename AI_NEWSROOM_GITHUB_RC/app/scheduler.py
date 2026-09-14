@@ -4,10 +4,12 @@ import time
 from datetime import datetime, timezone
 from pathlib import Path
 from typing import Any, Callable
+from zoneinfo import ZoneInfo
 
 from app.collectors import OpenDartCollector, collect_rss
 from app.ingestion import NewsStore, default_db_path
 from app.runtime import RuntimeStore
+from app.source_registry import SourceRegistry
 
 
 class SchedulerError(ValueError):
@@ -15,11 +17,7 @@ class SchedulerError(ValueError):
 
 
 class CollectorScheduler:
-    """Operational collector coordinator with persistent run history.
-
-    Source failures are isolated. Every cycle is recorded in RuntimeStore so the
-    dashboard and health checks can distinguish SUCCESS, DEGRADED and FAILED.
-    """
+    """Operational collector coordinator with persistent source/run history."""
 
     def __init__(
         self,
@@ -31,6 +29,7 @@ class CollectorScheduler:
         self.path = Path(db_path) if db_path is not None else default_db_path()
         self.store = NewsStore(self.path)
         self.runtime = RuntimeStore(self.path)
+        self.registry = SourceRegistry(self.path)
         self.rss_collector = rss_collector
         self.dart_factory = dart_factory
 
@@ -55,9 +54,9 @@ class CollectorScheduler:
                     max_entries=int(feed.get("max_entries", 50)),
                 )
                 total += len(rows)
-                results.append({"type": "RSS", "source": feed["source_name"], "status": "OK", "count": len(rows)})
+                results.append({"type": "RSS", "source_key": feed.get("source_key"), "source": feed["source_name"], "status": "OK", "count": len(rows)})
             except Exception as exc:
-                results.append({"type": "RSS", "source": str(feed.get("source_name", "unknown")) if isinstance(feed, dict) else "invalid", "status": "ERROR", "error": type(exc).__name__})
+                results.append({"type": "RSS", "source_key": feed.get("source_key") if isinstance(feed, dict) else None, "source": str(feed.get("source_name", "unknown")) if isinstance(feed, dict) else "invalid", "status": "ERROR", "error": type(exc).__name__})
         if dart:
             try:
                 if not isinstance(dart, dict):
@@ -70,14 +69,12 @@ class CollectorScheduler:
                     page_count=int(dart.get("page_count", 100)),
                 )
                 total += len(rows)
-                results.append({"type": "DART", "source": "OpenDART", "status": "OK", "count": len(rows)})
+                results.append({"type": "DART", "source_key": dart.get("source_key"), "source": "OpenDART", "status": "OK", "count": len(rows)})
             except Exception as exc:
-                results.append({"type": "DART", "source": "OpenDART", "status": "ERROR", "error": type(exc).__name__})
+                results.append({"type": "DART", "source_key": dart.get("source_key") if isinstance(dart, dict) else None, "source": "OpenDART", "status": "ERROR", "error": type(exc).__name__})
 
         errors = sum(1 for row in results if row["status"] == "ERROR")
-        if not results:
-            status = "SUCCESS"
-        elif errors == 0:
+        if not results or errors == 0:
             status = "SUCCESS"
         elif errors < len(results):
             status = "DEGRADED"
@@ -103,6 +100,38 @@ class CollectorScheduler:
             "ok": status == "SUCCESS",
         }
 
+    def run_registered_once(self, *, now: datetime | None = None) -> dict[str, Any]:
+        now = now or datetime.now(timezone.utc)
+        if now.tzinfo is None:
+            raise SchedulerError("now must be timezone-aware")
+        due = self.registry.due_sources(now=now)
+        rss_feeds: list[dict[str, Any]] = []
+        dart: dict[str, Any] | None = None
+        for source in due:
+            if source["source_type"] == "RSS":
+                rss_feeds.append({
+                    "source_key": source["source_key"],
+                    "feed_url": source["config"]["feed_url"],
+                    "source_name": source["label"],
+                    "max_entries": source["config"].get("max_entries", 50),
+                })
+            elif source["source_type"] == "DART" and dart is None:
+                day = now.astimezone(ZoneInfo("Asia/Seoul")).strftime("%Y%m%d")
+                dart = {
+                    "source_key": source["source_key"],
+                    "bgn_de": day,
+                    "end_de": day,
+                    "page_count": source["config"].get("page_count", 100),
+                }
+        report = self.run_once(rss_feeds=rss_feeds, dart=dart)
+        for row in report["results"]:
+            key = row.get("source_key")
+            if key:
+                self.registry.mark_attempt(key, success=row["status"] == "OK", at=now)
+        report["scheduled_source_count"] = len(due)
+        report["due_source_keys"] = [row["source_key"] for row in due]
+        return report
+
     def run_loop(
         self,
         *,
@@ -119,3 +148,17 @@ class CollectorScheduler:
             if on_report:
                 on_report(report)
             time.sleep(interval_minutes * 60)
+
+    def run_registered_loop(
+        self,
+        *,
+        poll_minutes: int = 5,
+        on_report: Callable[[dict[str, Any]], None] | None = None,
+    ) -> None:
+        if isinstance(poll_minutes, bool) or not isinstance(poll_minutes, int) or poll_minutes < 5:
+            raise SchedulerError("poll_minutes must be an integer >= 5")
+        while True:
+            report = self.run_registered_once()
+            if on_report:
+                on_report(report)
+            time.sleep(poll_minutes * 60)
