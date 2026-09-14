@@ -1,3 +1,37 @@
-<!doctype html><html lang="ko"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><title>AI NEWSROOM</title><style>
-body{margin:0;background:#0b0f14;color:#e8edf5;font-family:Segoe UI,Arial,sans-serif}.wrap{max-width:1100px;margin:auto;padding:28px}.muted{color:#8b98aa}.ok{color:#2dd4bf}.grid{display:grid;grid-template-columns:repeat(3,1fr);gap:12px;margin-top:18px}.card{background:#121821;border:1px solid #25303d;border-radius:12px;padding:16px}.label{font-size:12px;color:#8b98aa}.v{font-size:20px;font-weight:800;margin-top:6px}.panel{margin-top:16px;background:#121821;border:1px solid #25303d;border-radius:12px;padding:16px}@media(max-width:720px){.grid{grid-template-columns:1fr}.wrap{padding:16px}}
-</style></head><body><div class="wrap"><h1>AI NEWSROOM</h1><div class="muted">Release Candidate Control Center</div><div class="panel"><span class="ok">● SYSTEM ONLINE</span></div><div class="grid"><div class="card"><div class="label">Workflow</div><div class="v">READY</div></div><div class="card"><div class="label">Evidence</div><div class="v">READY</div></div><div class="card"><div class="label">Supply Chain</div><div class="v">READY</div></div></div><div class="panel" id="health">Health checking...</div></div><script>fetch('/api/health').then(r=>r.json()).then(d=>document.getElementById('health').textContent='API Health: '+d.status+' / '+d.release).catch(e=>document.getElementById('health').textContent='API Health: ERROR');</script></body></html>
+<!doctype html>
+<html lang="ko">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<title>AI NEWSROOM</title>
+<style>
+:root{color-scheme:dark}body{margin:0;background:#0a0e13;color:#eef3f9;font-family:Segoe UI,Apple SD Gothic Neo,Arial,sans-serif}.wrap{max-width:1240px;margin:auto;padding:24px}.top{display:flex;justify-content:space-between;gap:16px;align-items:end}.muted{color:#91a0b3}.status{padding:7px 10px;border:1px solid #2a3645;border-radius:999px;font-size:12px}.grid{display:grid;grid-template-columns:repeat(4,1fr);gap:12px;margin:20px 0}.card,.panel{background:#111821;border:1px solid #253141;border-radius:12px;padding:16px}.k{font-size:12px;color:#91a0b3}.v{font-size:24px;font-weight:750;margin-top:5px}.panel{margin-top:12px}.chips{display:flex;gap:7px;flex-wrap:wrap;margin-top:10px}.chip{border:1px solid #2b394a;border-radius:7px;padding:5px 7px;font-size:11px;color:#bcc8d8}table{width:100%;border-collapse:collapse;margin-top:10px}th,td{text-align:left;padding:10px 8px;border-bottom:1px solid #202a37;font-size:13px}th{color:#91a0b3;font-weight:600}.tag{font-size:11px;border:1px solid #314055;border-radius:6px;padding:3px 5px}.title{max-width:620px}.error{color:#ffb4ab}@media(max-width:850px){.grid{grid-template-columns:repeat(2,1fr)}.top{display:block}.title{max-width:280px}}@media(max-width:520px){.grid{grid-template-columns:1fr}.wrap{padding:14px}th:nth-child(3),td:nth-child(3){display:none}}
+</style>
+</head>
+<body>
+<div class="wrap">
+  <div class="top"><div><h1>AI NEWSROOM</h1><div class="muted">Development Control Center · 실제 구현 상태만 표시</div></div><div id="status" class="status">API 확인 중</div></div>
+  <div class="grid">
+    <div class="card"><div class="k">Release</div><div class="v" id="release">-</div></div>
+    <div class="card"><div class="k">Implemented Modules</div><div class="v" id="modulesCount">-</div></div>
+    <div class="card"><div class="k">Recent Events</div><div class="v" id="eventCount">-</div></div>
+    <div class="card"><div class="k">Duplicate / Update</div><div class="v" id="dupeCount">-</div></div>
+  </div>
+  <div class="panel"><div class="k">Implemented</div><div id="modules" class="chips"></div></div>
+  <div class="panel"><div class="k">Recent News / Disclosure Intake</div><div id="events"></div></div>
+</div>
+<script>
+const esc=s=>String(s??'').replace(/[&<>"']/g,m=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[m]));
+async function load(){
+ try{
+  const [h,s,n]=await Promise.all([fetch('/api/health').then(r=>r.json()),fetch('/api/system').then(r=>r.json()),fetch('/api/news/events?limit=30').then(r=>r.json())]);
+  document.getElementById('status').textContent='● SYSTEM ONLINE';document.getElementById('release').textContent=h.release;
+  const mods=s.implemented_modules||[];document.getElementById('modulesCount').textContent=mods.length;document.getElementById('modules').innerHTML=mods.map(x=>`<span class="chip">${esc(x)}</span>`).join('');
+  const events=n.events||[];document.getElementById('eventCount').textContent=events.length;document.getElementById('dupeCount').textContent=events.filter(x=>x.classification==='DUPLICATE'||x.classification==='UPDATE').length;
+  if(!events.length){document.getElementById('events').innerHTML='<div class="muted" style="padding:14px 0">수집된 이벤트가 없습니다.</div>';return}
+  document.getElementById('events').innerHTML=`<table><thead><tr><th>상태</th><th>제목</th><th>출처</th><th>수신시각</th></tr></thead><tbody>${events.map(e=>`<tr><td><span class="tag">${esc(e.classification)}</span></td><td class="title">${esc(e.title)}</td><td>${esc(e.source_name)}</td><td>${esc((e.received_at||'').replace('T',' ').slice(0,19))}</td></tr>`).join('')}</tbody></table>`;
+ }catch(e){document.getElementById('status').textContent='API ERROR';document.getElementById('status').classList.add('error');document.getElementById('events').innerHTML='<div class="error">대시보드 데이터를 불러오지 못했습니다.</div>'}
+}
+load();setInterval(load,30000);
+</script>
+</body></html>
