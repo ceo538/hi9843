@@ -1,6 +1,7 @@
 from datetime import datetime, timedelta, timezone
 
 from app.ingestion import NewsStore
+from app.runtime import RuntimeStore
 from app.runtime_health import RuntimeHealth
 from app.source_registry import SourceRegistry
 from app.work_queue import NewsroomWorkQueue
@@ -67,3 +68,40 @@ def test_runtime_health_marks_exhausted_queue_failed(tmp_path):
     assert snapshot["queue"]["retryable"] == 0
     assert snapshot["queue"]["exhausted"] == 1
     assert snapshot["queue"]["counts"]["FAILED"] == 1
+
+
+def test_runtime_health_reports_fresh_runner_heartbeat(tmp_path):
+    db_path = tmp_path / "newsroom.db"
+    now = datetime(2026, 9, 15, 1, 0, tzinfo=timezone.utc)
+    RuntimeStore(db_path).set_state(
+        "production_runner",
+        {"status": "SUCCESS", "last_cycle_at": now.isoformat()},
+        now=now,
+    )
+
+    snapshot = RuntimeHealth(db_path).snapshot(now=now + timedelta(minutes=9))
+
+    assert snapshot["status"] == "SUCCESS"
+    assert snapshot["runner_health"]["fresh"] is True
+    assert snapshot["runner_health"]["stale"] is False
+    assert snapshot["runner_health"]["state"] == "FRESH"
+    assert snapshot["runner_health"]["age_seconds"] == 540
+
+
+def test_runtime_health_marks_stale_runner_failed(tmp_path):
+    db_path = tmp_path / "newsroom.db"
+    now = datetime(2026, 9, 15, 1, 0, tzinfo=timezone.utc)
+    RuntimeStore(db_path).set_state(
+        "production_runner",
+        {"status": "SUCCESS", "last_cycle_at": now.isoformat()},
+        now=now,
+    )
+
+    snapshot = RuntimeHealth(db_path).snapshot(now=now + timedelta(minutes=11))
+
+    assert snapshot["status"] == "FAILED"
+    assert snapshot["runner_health"]["fresh"] is False
+    assert snapshot["runner_health"]["stale"] is True
+    assert snapshot["runner_health"]["state"] == "STALE"
+    assert snapshot["runner_health"]["age_seconds"] == 660
+    assert snapshot["runner_health"]["stale_after_seconds"] == 600
