@@ -56,7 +56,7 @@ def collect_rss(
     except requests.RequestException as exc:
         raise CollectorError("RSS request failed") from exc
 
-    parsed = feedparser.loads(response.content)
+    parsed = feedparser.parse(response.content)
     if getattr(parsed, "bozo", False) and not getattr(parsed, "entries", None):
         raise CollectorError("RSS payload could not be parsed")
 
@@ -69,8 +69,6 @@ def collect_rss(
         external_id = str(entry.get("id") or entry.get("guid") or link)
         body = str(entry.get("summary") or entry.get("description") or "")
         published = entry.get("published") or entry.get("updated")
-        # RSS date strings are heterogeneous. Preserve raw source data in body and
-        # only pass ISO dates through; otherwise do not fabricate a timestamp.
         published_at = str(published) if isinstance(published, str) and "T" in published else None
         results.append(
             store.ingest(
@@ -144,15 +142,13 @@ class OpenDartCollector:
                 continue
             viewer = f"https://dart.fss.or.kr/dsaf001/main.do?rcpNo={receipt}"
             body = " | ".join(
-                part
-                for part in (
+                (
                     f"법인: {corp_name}",
                     f"보고서: {report_name}",
                     f"제출인: {row.get('flr_nm') or ''}",
                     f"접수일: {row.get('rcept_dt') or ''}",
                     f"시장: {row.get('corp_cls') or ''}",
                 )
-                if part
             )
             results.append(
                 self.store.ingest(
