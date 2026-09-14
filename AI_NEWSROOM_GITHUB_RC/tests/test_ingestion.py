@@ -36,6 +36,7 @@ def test_ingest_persists_and_lists(tmp_path):
     event = r.json()
     assert event["classification"] == "NEW"
     assert event["source_name"] == "Test News"
+    assert event["story_hash"]
 
     listed = c.get("/api/news/events").json()
     assert listed["count"] == 1
@@ -69,16 +70,47 @@ def test_same_source_id_changed_story_is_update(tmp_path):
     assert items["items"][0]["latest_revision_id"] == second["id"]
 
 
-def test_cross_source_exact_content_is_duplicate_but_keeps_provenance(tmp_path):
+def test_same_item_metadata_correction_is_update(tmp_path):
+    c = client_for(tmp_path)
+    first = c.post("/api/news/ingest", json=sample_payload()).json()
+    corrected = sample_payload()
+    corrected["source_url"] = "https://example.com/article/1-corrected"
+    second = c.post("/api/news/ingest", json=corrected).json()
+    assert second["classification"] == "UPDATE"
+    assert second["related_revision_id"] == first["id"]
+    assert second["story_hash"] == first["story_hash"]
+    assert second["content_hash"] != first["content_hash"]
+
+
+def test_cross_source_exact_story_is_duplicate_even_with_different_url_and_time(tmp_path):
     c = client_for(tmp_path)
     first = c.post("/api/news/ingest", json=sample_payload()).json()
     other = sample_payload(external_id="wire-9", source_name="Other Wire")
+    other["source_url"] = "https://other.example.com/wire/9"
+    other["published_at"] = "2026-09-14T12:05:00+09:00"
     second = c.post("/api/news/ingest", json=other).json()
 
     assert second["classification"] == "DUPLICATE"
     assert second["related_revision_id"] == first["id"]
     assert second["source_name"] == "Other Wire"
     assert second["external_id"] == "wire-9"
+    assert second["story_hash"] == first["story_hash"]
+    assert second["content_hash"] != first["content_hash"]
+
+
+def test_story_hash_normalizes_case_and_whitespace_across_sources(tmp_path):
+    c = client_for(tmp_path)
+    first = sample_payload(title="NVIDIA 공급망 테스트", body="회사 A가 서버업체 B에 전력모듈을 공급한다.")
+    c.post("/api/news/ingest", json=first)
+    second = sample_payload(
+        title="nvidia   공급망 테스트",
+        body="회사 A가   서버업체 B에 전력모듈을 공급한다.",
+        external_id="other-2",
+        source_name="Other Wire",
+    )
+    second["source_url"] = "https://other.example.com/other-2"
+    event = c.post("/api/news/ingest", json=second).json()
+    assert event["classification"] == "DUPLICATE"
 
 
 def test_different_external_id_and_content_stays_new(tmp_path):
