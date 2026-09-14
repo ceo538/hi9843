@@ -21,20 +21,28 @@ class DatabaseMaintenance:
         NewsStore(self.path)
 
     def integrity_check(self) -> dict[str, Any]:
+        conn = None
         try:
-            with sqlite3.connect(self.path, timeout=30) as conn:
-                rows = [str(row[0]) for row in conn.execute("PRAGMA quick_check").fetchall()]
+            conn = sqlite3.connect(self.path, timeout=30)
+            rows = [str(row[0]) for row in conn.execute("PRAGMA quick_check").fetchall()]
         except sqlite3.Error as exc:
             raise MaintenanceError("database integrity check failed") from exc
+        finally:
+            if conn is not None:
+                conn.close()
         ok = rows == ["ok"]
         return {"ok": ok, "result": rows}
 
     def checkpoint(self) -> dict[str, int]:
+        conn = None
         try:
-            with sqlite3.connect(self.path, timeout=30) as conn:
-                busy, log_pages, checkpointed = conn.execute("PRAGMA wal_checkpoint(PASSIVE)").fetchone()
+            conn = sqlite3.connect(self.path, timeout=30)
+            busy, log_pages, checkpointed = conn.execute("PRAGMA wal_checkpoint(PASSIVE)").fetchone()
         except sqlite3.Error as exc:
             raise MaintenanceError("database checkpoint failed") from exc
+        finally:
+            if conn is not None:
+                conn.close()
         return {"busy": int(busy), "log_pages": int(log_pages), "checkpointed_pages": int(checkpointed)}
 
     def backup(self, destination_dir: Path | str, *, retain: int = 10) -> dict[str, Any]:
@@ -42,16 +50,32 @@ class DatabaseMaintenance:
             raise MaintenanceError("retain must be 1..100")
         destination = Path(destination_dir)
         destination.mkdir(parents=True, exist_ok=True)
-        stamp = datetime.now(timezone.utc).strftime("%Y%m%dT%H%M%SZ")
+        stamp = datetime.now(timezone.utc).strftime("%Y%m%dT%H%M%S%fZ")
         final_path = destination / f"newsroom-{stamp}.db"
         temp_path = final_path.with_suffix(".db.tmp")
+        source = None
+        target = None
         try:
-            with sqlite3.connect(self.path, timeout=30) as source, sqlite3.connect(temp_path) as target:
-                source.backup(target)
+            source = sqlite3.connect(self.path, timeout=30)
+            target = sqlite3.connect(temp_path, timeout=30)
+            source.backup(target)
+            target.commit()
+        except Exception:
+            raise
+        finally:
+            # Explicit close is required on Windows before rename/replace.
+            if target is not None:
+                target.close()
+            if source is not None:
+                source.close()
+        try:
             os.replace(temp_path, final_path)
-            with sqlite3.connect(final_path) as check:
+            check = sqlite3.connect(final_path, timeout=30)
+            try:
                 if check.execute("PRAGMA quick_check").fetchone()[0] != "ok":
                     raise MaintenanceError("backup integrity check failed")
+            finally:
+                check.close()
         except Exception:
             try:
                 temp_path.unlink(missing_ok=True)
