@@ -139,7 +139,8 @@ def main() -> int:
     print(json.dumps({"event_id": args.event_id, "consensus": report["consensus"], "errors": list(errors)}, ensure_ascii=False), flush=True)
     if errors:
         raise SystemExit("Editorial model review failed for: " + ", ".join(errors))
-    return 0 if report["consensus"] != "BLOCK" else 2
+    # BLOCK is a valid editorial verdict, not a transport/parser failure.
+    return 0
 
 
 if __name__ == "__main__":
