@@ -64,15 +64,19 @@ class ProductionRunner:
         self._sources_bootstrapped = False
 
     def bootstrap(self) -> list[dict[str, Any]]:
-        """Synchronize managed source defaults once per runner process.
+        """Synchronize managed defaults once per runner process.
 
-        SourceRegistry preserves operator enable/disable choices, so this safely
-        adds newly shipped defaults to an existing operational database while
-        refreshing policy metadata. A failed sync remains retryable next cycle.
+        The production SourceRegistry is synchronized so newly shipped defaults
+        reach existing databases while operator enable/disable choices are kept.
+        Injected/custom registries retain the older contract: existing rows are
+        treated as already bootstrapped, while an empty registry is initialized.
+        A failed sync remains retryable on the next safe cycle.
         """
         if self._sources_bootstrapped:
             return self.registry.list()
-        rows = self.registry.bootstrap_defaults()
+        rows = self.registry.list()
+        if isinstance(self.registry, SourceRegistry) or not rows:
+            rows = self.registry.bootstrap_defaults()
         self._sources_bootstrapped = True
         return rows
 
