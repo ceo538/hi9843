@@ -9,6 +9,7 @@ import time
 import requests
 
 from app.model_review import aggregate_reviews, build_review_packet, parse_review, review_prompt
+from app.model_usage import ModelUsageStore
 from app.orchestrator import NewsroomOrchestrator
 
 OUT = Path("reports/editorial-review")
@@ -37,7 +38,7 @@ def request(method, url, **kwargs):
     raise RuntimeError("retry limit")
 
 
-def openai(prompt: str) -> str:
+def openai(prompt: str) -> dict:
     key = os.environ["OPENAI_API_KEY"]
     model = os.getenv("OPENAI_MODEL", "gpt-5.6-sol")
     r = request(
@@ -51,10 +52,16 @@ def openai(prompt: str) -> str:
         for content in item.get("content", []):
             if isinstance(content, dict) and content.get("text"):
                 parts.append(content["text"])
-    return "\n".join(parts) or str(data.get("output_text") or "")
+    usage = data.get("usage") or {}
+    return {
+        "text": "\n".join(parts) or str(data.get("output_text") or ""),
+        "model": str(data.get("model") or model),
+        "input_tokens": usage.get("input_tokens"),
+        "output_tokens": usage.get("output_tokens"),
+    }
 
 
-def anthropic(prompt: str) -> str:
+def anthropic(prompt: str) -> dict:
     key = os.environ["ANTHROPIC_API_KEY"]
     model = os.getenv("ANTHROPIC_MODEL", "claude-sonnet-5")
     r = request(
@@ -63,10 +70,16 @@ def anthropic(prompt: str) -> str:
         json={"model": model, "max_tokens": 1200, "messages": [{"role": "user", "content": prompt}]},
     )
     data = r.json(); r.close()
-    return "".join(x.get("text", "") for x in data.get("content", []) if isinstance(x, dict) and x.get("type") == "text")
+    usage = data.get("usage") or {}
+    return {
+        "text": "".join(x.get("text", "") for x in data.get("content", []) if isinstance(x, dict) and x.get("type") == "text"),
+        "model": str(data.get("model") or model),
+        "input_tokens": usage.get("input_tokens"),
+        "output_tokens": usage.get("output_tokens"),
+    }
 
 
-def gemini(prompt: str) -> str:
+def gemini(prompt: str) -> dict:
     key = os.environ["GEMINI_API_KEY"]
     model = os.getenv("GEMINI_MODEL", "gemini-3.8-flash")
     r = request(
@@ -78,12 +91,18 @@ def gemini(prompt: str) -> str:
         },
     )
     data = r.json(); r.close()
-    return "".join(
-        part.get("text", "")
-        for candidate in data.get("candidates", [])
-        for part in candidate.get("content", {}).get("parts", [])
-        if isinstance(part, dict) and not part.get("thought")
-    )
+    usage = data.get("usageMetadata") or {}
+    return {
+        "text": "".join(
+            part.get("text", "")
+            for candidate in data.get("candidates", [])
+            for part in candidate.get("content", {}).get("parts", [])
+            if isinstance(part, dict) and not part.get("thought")
+        ),
+        "model": model,
+        "input_tokens": usage.get("promptTokenCount"),
+        "output_tokens": usage.get("candidatesTokenCount"),
+    }
 
 
 def main() -> int:
@@ -102,6 +121,12 @@ def main() -> int:
     packet = build_review_packet(workflow)
     prompt = review_prompt(packet)
     providers = {"openai": openai, "anthropic": anthropic, "gemini": gemini}
+    configured_models = {
+        "openai": os.getenv("OPENAI_MODEL", "gpt-5.6-sol"),
+        "anthropic": os.getenv("ANTHROPIC_MODEL", "claude-sonnet-5"),
+        "gemini": os.getenv("GEMINI_MODEL", "gemini-3.8-flash"),
+    }
+    usage_store = ModelUsageStore()
     reviews: dict[str, dict] = {}
     errors: dict[str, str] = {}
     diagnostics: dict[str, dict] = {}
@@ -110,24 +135,51 @@ def main() -> int:
     for name, call in providers.items():
         started = time.perf_counter()
         try:
-            raw = call(prompt)
+            result = call(prompt)
+            latency_ms = int(round((time.perf_counter() - started) * 1000))
+            raw = result["text"]
+            review = parse_review(raw)
+            reviews[name] = review
             diagnostics[name] = {
-                "latency_s": round(time.perf_counter() - started, 2),
+                "latency_ms": latency_ms,
                 "response_chars": len(raw),
                 "response_preview": raw[:500],
+                "model": result.get("model"),
+                "input_tokens": result.get("input_tokens"),
+                "output_tokens": result.get("output_tokens"),
             }
-            reviews[name] = parse_review(raw)
-            print(json.dumps({"provider": name, "status": "OK", "verdict": reviews[name]["verdict"]}, ensure_ascii=False), flush=True)
+            usage_store.record(
+                event_id=args.event_id,
+                provider=name,
+                model=str(result.get("model") or configured_models[name]),
+                stage="EDITORIAL_REVIEW",
+                input_tokens=result.get("input_tokens"),
+                output_tokens=result.get("output_tokens"),
+                latency_ms=latency_ms,
+                status="SUCCESS",
+            )
+            print(json.dumps({"provider": name, "status": "OK", "verdict": review["verdict"], "latency_ms": latency_ms}, ensure_ascii=False), flush=True)
         except Exception as exc:
+            latency_ms = int(round((time.perf_counter() - started) * 1000))
             errors[name] = f"{type(exc).__name__}: {str(exc)[:500]}"
-            diagnostics.setdefault(name, {})["latency_s"] = round(time.perf_counter() - started, 2)
-            print(json.dumps({"provider": name, "status": "ERROR", "error": errors[name]}, ensure_ascii=False), flush=True)
+            diagnostics[name] = {"latency_ms": latency_ms}
+            usage_store.record(
+                event_id=args.event_id,
+                provider=name,
+                model=configured_models[name],
+                stage="EDITORIAL_REVIEW",
+                latency_ms=latency_ms,
+                status="ERROR",
+                error_code=type(exc).__name__,
+            )
+            print(json.dumps({"provider": name, "status": "ERROR", "error": errors[name], "latency_ms": latency_ms}, ensure_ascii=False), flush=True)
 
     report: dict[str, object] = {
         "event_id": args.event_id,
         "reviews": reviews,
         "errors": errors,
         "diagnostics": diagnostics,
+        "usage_summary": usage_store.summary(),
         "publication_allowed": False,
         "human_approval_required": True,
     }
@@ -139,7 +191,6 @@ def main() -> int:
     print(json.dumps({"event_id": args.event_id, "consensus": report["consensus"], "errors": list(errors)}, ensure_ascii=False), flush=True)
     if errors:
         raise SystemExit("Editorial model review failed for: " + ", ".join(errors))
-    # BLOCK is a valid editorial verdict, not a transport/parser failure.
     return 0
 
 
