@@ -233,15 +233,23 @@ class SourceRegistry:
             )
 
     def bootstrap_defaults(self) -> list[dict[str, Any]]:
-        """Upsert the curated Korean business-news allowlist plus OpenDART.
+        """Synchronize curated defaults without overriding operator enable/disable choices.
 
-        This is intentionally safe to call at every process start. Existing run
-        timestamps survive the upsert. The previous NVIDIA development default
-        is disabled in-place so an upgraded operational database does not keep
-        collecting an out-of-scope source.
+        New defaults are enabled on first registration. Existing default sources keep
+        their current enabled state while receiving updated URL/policy metadata and
+        intervals. Run timestamps survive the upsert. The legacy NVIDIA development
+        default is disabled in-place.
         """
+        existing = {row["source_key"]: row for row in self.list()}
         self._disable_legacy_defaults()
-        rows = [self.upsert(**source) for source in KOREAN_BUSINESS_RSS_DEFAULTS]
+        rows: list[dict[str, Any]] = []
+        for source in KOREAN_BUSINESS_RSS_DEFAULTS:
+            payload = dict(source)
+            prior = existing.get(source["source_key"])
+            if prior is not None:
+                payload["enabled"] = bool(prior["enabled"])
+            rows.append(self.upsert(**payload))
+        dart_enabled = bool(existing.get("opendart", {}).get("enabled", True))
         rows.append(
             self.upsert(
                 source_key="opendart",
@@ -249,7 +257,7 @@ class SourceRegistry:
                 label="OpenDART",
                 config={"page_count": 100},
                 interval_minutes=5,
-                enabled=True,
+                enabled=dart_enabled,
             )
         )
         return rows
