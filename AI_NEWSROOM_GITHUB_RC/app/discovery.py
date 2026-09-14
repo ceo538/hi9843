@@ -26,7 +26,7 @@ class CompanyDiscovery:
     """
 
     def __init__(self, db_path: Path | str | None = None) -> None:
-        self.path = Path(db_path) if db_path else default_db_path()
+        self.path = Path(db_path) if db_path is not None else default_db_path()
         NewsStore(self.path)
         IntelligenceStore(self.path)
 
@@ -40,7 +40,7 @@ class CompanyDiscovery:
             raise DiscoveryError("limit must be 1..200")
         with self._connect() as conn:
             event = conn.execute(
-                "SELECT title, body FROM revisions WHERE id=?", (int(event_id),)
+                "SELECT title, body FROM news_revisions WHERE id=?", (int(event_id),)
             ).fetchone()
             if event is None:
                 raise DiscoveryError("event does not exist")
