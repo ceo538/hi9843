@@ -1,12 +1,13 @@
 from __future__ import annotations
 
 import time
-from datetime import datetime
+from datetime import datetime, timezone
 from pathlib import Path
 from typing import Any, Callable
 
 from app.collectors import OpenDartCollector, collect_rss
 from app.ingestion import NewsStore, default_db_path
+from app.runtime import RuntimeStore
 
 
 class SchedulerError(ValueError):
@@ -14,11 +15,10 @@ class SchedulerError(ValueError):
 
 
 class CollectorScheduler:
-    """One-cycle collector coordinator with injectable adapters for testing.
+    """Operational collector coordinator with persistent run history.
 
-    Persistence lives in NewsStore. This class does not daemonize by itself;
-    scripts/collector_cycle.py can repeat it or Windows Task Scheduler can call
-    one cycle. Failures are isolated per source and returned in the report.
+    Source failures are isolated. Every cycle is recorded in RuntimeStore so the
+    dashboard and health checks can distinguish SUCCESS, DEGRADED and FAILED.
     """
 
     def __init__(
@@ -30,6 +30,7 @@ class CollectorScheduler:
     ) -> None:
         self.path = Path(db_path) if db_path is not None else default_db_path()
         self.store = NewsStore(self.path)
+        self.runtime = RuntimeStore(self.path)
         self.rss_collector = rss_collector
         self.dart_factory = dart_factory
 
@@ -39,7 +40,8 @@ class CollectorScheduler:
         rss_feeds: list[dict[str, Any]] | None = None,
         dart: dict[str, Any] | None = None,
     ) -> dict[str, Any]:
-        started = datetime.utcnow().isoformat() + "Z"
+        run_id = self.runtime.start_collector_run()
+        started = datetime.now(timezone.utc).isoformat()
         results: list[dict[str, Any]] = []
         total = 0
         for feed in rss_feeds or []:
@@ -71,12 +73,34 @@ class CollectorScheduler:
                 results.append({"type": "DART", "source": "OpenDART", "status": "OK", "count": len(rows)})
             except Exception as exc:
                 results.append({"type": "DART", "source": "OpenDART", "status": "ERROR", "error": type(exc).__name__})
+
+        errors = sum(1 for row in results if row["status"] == "ERROR")
+        if not results:
+            status = "SUCCESS"
+        elif errors == 0:
+            status = "SUCCESS"
+        elif errors < len(results):
+            status = "DEGRADED"
+        else:
+            status = "FAILED"
+        persisted = self.runtime.finish_collector_run(
+            run_id,
+            status=status,
+            source_count=len(results),
+            ingested_count=total,
+            error_count=errors,
+            details={"results": results},
+        )
         return {
+            "run_id": run_id,
             "started_at": started,
+            "finished_at": persisted["finished_at"],
+            "status": status,
             "source_count": len(results),
             "ingested_count": total,
+            "error_count": errors,
             "results": results,
-            "ok": all(row["status"] == "OK" for row in results),
+            "ok": status == "SUCCESS",
         }
 
     def run_loop(
