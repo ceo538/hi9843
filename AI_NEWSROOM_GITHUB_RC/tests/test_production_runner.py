@@ -19,6 +19,18 @@ class FakeRegistry:
         return list(self.rows)
 
 
+class FlakyRegistry(FakeRegistry):
+    def __init__(self):
+        super().__init__()
+        self.failures_remaining = 1
+
+    def bootstrap_defaults(self):
+        if self.failures_remaining:
+            self.failures_remaining -= 1
+            raise RuntimeError("temporary bootstrap failure")
+        return super().bootstrap_defaults()
+
+
 class FakeNewsroomCycle:
     def __init__(self):
         self.calls = []
@@ -85,6 +97,7 @@ def test_first_cycle_runs_all_components_and_persists_state(tmp_path):
     state = runtime.status()["runner"]
     assert state["status"] == "SUCCESS"
     assert state["last_cycle_at"] == now.isoformat()
+    assert state["consecutive_fatal_errors"] == 0
 
 
 def test_intervals_skip_tasks_until_due(tmp_path):
@@ -129,3 +142,34 @@ def test_expired_lease_allows_takeover(tmp_path):
     assert runtime.acquire_lease("production_runner", "a", ttl_seconds=30, now=start) is True
     assert runtime.acquire_lease("production_runner", "b", ttl_seconds=30, now=start + timedelta(seconds=20)) is False
     assert runtime.acquire_lease("production_runner", "b", ttl_seconds=30, now=start + timedelta(seconds=31)) is True
+
+
+def test_safe_cycle_records_fatal_failure_and_recovers_next_cycle(tmp_path):
+    path = tmp_path / "newsroom.db"
+    runtime = RuntimeStore(path)
+    registry = FlakyRegistry()
+    runner = ProductionRunner(
+        path,
+        runtime=runtime,
+        registry=registry,
+        newsroom_cycle=FakeNewsroomCycle(),
+        market_worker=FakeMarket(),
+        maintenance=FakeMaintenance(),
+        backup_dir=tmp_path / "backups",
+        owner_id="runner-safe",
+    )
+    start = datetime(2026, 9, 15, 0, 0, tzinfo=timezone.utc)
+
+    failed = runner.run_once_safe(now=start, force=True)
+    assert failed["status"] == "FAILED"
+    assert failed["errors"] == {"runner": "RuntimeError"}
+    assert failed["fatal_error"]["state_persisted"] is True
+    failed_state = runtime.status()["runner"]
+    assert failed_state["status"] == "FAILED"
+    assert failed_state["consecutive_fatal_errors"] == 1
+    assert failed_state["last_fatal_error"]["type"] == "RuntimeError"
+
+    recovered = runner.run_once_safe(now=start + timedelta(minutes=1), force=True)
+    assert recovered["status"] == "SUCCESS"
+    assert recovered["state"]["consecutive_fatal_errors"] == 0
+    assert runtime.status()["runner"]["status"] == "SUCCESS"
