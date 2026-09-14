@@ -1,0 +1,73 @@
+name: AI NEWSROOM Final Release Gate
+
+on:
+  push:
+    branches: [ main ]
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  final-gate:
+    runs-on: windows-latest
+    timeout-minutes: 30
+    defaults:
+      run:
+        working-directory: AI_NEWSROOM_GITHUB_RC
+
+    env:
+      OPENAI_API_KEY: ${{ secrets.OPENAI_API_KEY }}
+      ANTHROPIC_API_KEY: ${{ secrets.ANTHROPIC_API_KEY }}
+      GEMINI_API_KEY: ${{ secrets.GEMINI_API_KEY }}
+      DART_API_KEY: ${{ secrets.DART_API_KEY }}
+      KIS_APP_KEY: ${{ secrets.KIS_APP_KEY }}
+      KIS_APP_SECRET: ${{ secrets.KIS_APP_SECRET }}
+      OPENAI_MODEL: gpt-5.6-sol
+      ANTHROPIC_MODEL: claude-sonnet-5
+      GEMINI_MODEL: gemini-3.8-flash
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+
+      - name: Install dependencies
+        shell: pwsh
+        run: |
+          python -m pip install --upgrade pip
+          pip install -r requirements.txt
+          python -m playwright install chromium
+
+      - name: Unit tests
+        run: pytest -q
+
+      - name: Windows browser E2E
+        shell: pwsh
+        run: |
+          New-Item -ItemType Directory -Force reports | Out-Null
+          python scripts/windows_e2e.py | Tee-Object -FilePath reports/windows_e2e.txt
+
+      - name: Live model evaluation
+        run: python scripts/model_eval.py
+
+      - name: Live data validation
+        run: python scripts/live_data_gate.py
+
+      - name: Final release gate
+        run: python scripts/release_gate.py
+
+      - name: Build final package
+        shell: pwsh
+        run: |
+          New-Item -ItemType Directory -Force dist | Out-Null
+          Compress-Archive -Path app,scripts,requirements.txt,README.md,reports -DestinationPath dist/AI_NEWSROOM_FINAL.zip -Force
+
+      - name: Upload final artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: AI_NEWSROOM_FINAL
+          path: AI_NEWSROOM_GITHUB_RC/dist/AI_NEWSROOM_FINAL.zip
+          retention-days: 30
