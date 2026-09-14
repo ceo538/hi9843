@@ -6,8 +6,10 @@ and all persisted records retain their original source URL / external ID.
 """
 from __future__ import annotations
 
+import calendar
 import os
 from dataclasses import dataclass
+from datetime import datetime, timezone
 from typing import Any
 from urllib.parse import urlsplit
 
@@ -33,6 +35,30 @@ def _http_url(value: str) -> str:
     if parts.username is not None or parts.password is not None:
         raise CollectorError("source URL must not contain credentials")
     return value
+
+
+def _rss_published_at(entry: Any) -> str | None:
+    """Return a normalized UTC timestamp from common RSS/Atom date formats."""
+    parsed = entry.get("published_parsed") or entry.get("updated_parsed")
+    if parsed is not None:
+        try:
+            seconds = calendar.timegm(parsed)
+            return datetime.fromtimestamp(seconds, tz=timezone.utc).isoformat()
+        except (TypeError, ValueError, OverflowError):
+            pass
+    raw = entry.get("published") or entry.get("updated")
+    if isinstance(raw, str):
+        value = raw.strip()
+        if value.endswith("Z"):
+            value = value[:-1] + "+00:00"
+        try:
+            dt = datetime.fromisoformat(value)
+        except ValueError:
+            return None
+        if dt.tzinfo is None:
+            return None
+        return dt.astimezone(timezone.utc).isoformat()
+    return None
 
 
 def collect_rss(
@@ -68,8 +94,6 @@ def collect_rss(
             continue
         external_id = str(entry.get("id") or entry.get("guid") or link)
         body = str(entry.get("summary") or entry.get("description") or "")
-        published = entry.get("published") or entry.get("updated")
-        published_at = str(published) if isinstance(published, str) and "T" in published else None
         results.append(
             store.ingest(
                 source_type="RSS",
@@ -78,7 +102,7 @@ def collect_rss(
                 external_id=external_id,
                 title=title,
                 body=body,
-                published_at=published_at,
+                published_at=_rss_published_at(entry),
             )
         )
     return results
