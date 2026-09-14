@@ -1,6 +1,8 @@
 from pathlib import Path
 
-from app.collectors import OpenDartCollector, collect_rss
+import pytest
+
+from app.collectors import CollectorError, OpenDartCollector, collect_rss
 from app.ingestion import NewsStore
 
 
@@ -48,6 +50,39 @@ def test_collect_rss_ingests_and_preserves_provenance(tmp_path: Path):
     assert rows[0]["source_name"] == "Official Feed"
     assert rows[0]["external_id"] == "g-1"
     assert fake.calls[0][0] == "https://example.com/feed.xml"
+
+
+def test_rss_policy_filters_domain_and_keywords_before_ingest(tmp_path: Path):
+    store = NewsStore(tmp_path / "newsroom.db")
+    rss = """<?xml version='1.0' encoding='utf-8'?><rss version='2.0'><channel><title>x</title>
+    <item><guid>a</guid><title>반도체 기업 신규 공급계약</title><link>https://news.example.com/a</link><description>AI 데이터센터 공급</description></item>
+    <item><guid>b</guid><title>연예 스타 인터뷰</title><link>https://news.example.com/b</link><description>기업 광고</description></item>
+    <item><guid>c</guid><title>반도체 기업 투자</title><link>https://evil.example.net/c</link><description>신규 공장</description></item>
+    </channel></rss>""".encode()
+    fake = FakeSession(FakeResponse(content=rss))
+
+    rows = collect_rss(
+        store=store,
+        feed_url="https://news.example.com/feed.xml",
+        source_name="Business Feed",
+        session=fake,
+        allowed_domains=["example.com"],
+        include_keywords=["기업", "반도체", "계약"],
+        exclude_keywords=["연예", "스포츠"],
+    )
+    assert [row["external_id"] for row in rows] == ["a"]
+
+
+def test_rss_feed_url_must_match_allowlisted_domain(tmp_path: Path):
+    store = NewsStore(tmp_path / "newsroom.db")
+    with pytest.raises(CollectorError):
+        collect_rss(
+            store=store,
+            feed_url="https://outside.example.net/feed.xml",
+            source_name="Feed",
+            allowed_domains=["example.com"],
+            session=FakeSession(FakeResponse(content=b"<rss/>")),
+        )
 
 
 def test_rss_rfc822_date_is_normalized_to_utc(tmp_path: Path):
