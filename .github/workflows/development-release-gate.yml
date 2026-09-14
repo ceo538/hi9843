@@ -51,6 +51,9 @@ jobs:
       - name: Windows task installer dry-run
         shell: pwsh
         run: ./scripts/install_windows_tasks.ps1 -DryRun
+      - name: Windows runtime verifier dry-run
+        shell: pwsh
+        run: ./scripts/verify_windows_runtime.ps1 -DryRun
       - name: Install Chromium
         run: python -m playwright install chromium
       - name: Windows browser E2E
