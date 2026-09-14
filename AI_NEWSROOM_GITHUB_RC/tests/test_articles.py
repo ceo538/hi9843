@@ -49,6 +49,31 @@ def test_editor_review_never_sets_publication_allowed(tmp_path):
     assert approved["publication_allowed"] is False
 
 
+def test_stale_article_version_cannot_be_approved(tmp_path):
+    path, event = make_event(tmp_path)
+    store = ArticleStore(path)
+    first = store.save_draft(event_id=event["id"], draft=draft())
+    latest = store.save_draft(event_id=event["id"], draft=draft("새 팩트가 반영된 최신 본문"))
+
+    with pytest.raises(ArticleError, match="latest article version"):
+        store.review(version_id=first["id"], status="EDITOR_APPROVED", reviewed_by="desk")
+
+    queue = store.editorial_queue()
+    assert [row["id"] for row in queue] == [latest["id"]]
+    assert queue[0]["event_id"] == event["id"]
+    assert queue[0]["source_title"] == "기사 제목"
+
+
+def test_reviewed_latest_version_leaves_pending_queue(tmp_path):
+    path, event = make_event(tmp_path)
+    store = ArticleStore(path)
+    version = store.save_draft(event_id=event["id"], draft=draft())
+    assert store.editorial_queue()[0]["id"] == version["id"]
+
+    store.review(version_id=version["id"], status="REJECTED", reviewed_by="desk", editor_note="근거 보강")
+    assert store.editorial_queue() == []
+
+
 def test_blocked_draft_cannot_be_saved(tmp_path):
     path, event = make_event(tmp_path)
     with pytest.raises(ArticleError):
