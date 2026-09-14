@@ -5,6 +5,7 @@ Set-StrictMode -Version Latest
 $ErrorActionPreference = "Stop"
 
 $taskNames = @(
+    "AI NEWSROOM - Production Runner",
     "AI NEWSROOM - Newsroom Cycle",
     "AI NEWSROOM - Market Cycle"
 )
