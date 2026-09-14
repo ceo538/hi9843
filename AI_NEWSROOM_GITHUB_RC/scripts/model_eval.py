@@ -8,6 +8,7 @@ CASES=[
  {"id":"indirect","prompt":"Known evidence: NVIDIA supplies GPUs to ServerCo. Company A supplies power modules to ServerCo. There is no evidence that Company A supplies NVIDIA directly. Classify the relationship between Company A and NVIDIA. Return ONLY JSON with keys relationship_status, directness, missing_link, reason. relationship_status must be one of VERIFIED, INFERRED, UNVERIFIED.","expected_not":"VERIFIED"},
  {"id":"unknown","prompt":"A news article mentions Company A and NVIDIA in the same paragraph but provides no contract, customer, product, or supply-chain evidence connecting them. Classify the relationship. Return ONLY JSON with keys relationship_status, directness, missing_link, reason. relationship_status must be one of VERIFIED, INFERRED, UNVERIFIED.","expected_not":"VERIFIED"},
 ]
+RETRYABLE = {429, 500, 502, 503, 504}
 
 def extract_json(s):
     s=s.strip(); s=re.sub(r'^```(?:json)?','',s); s=re.sub(r'```$','',s).strip()
@@ -15,79 +16,61 @@ def extract_json(s):
     if a<0 or b<a: raise ValueError('no json object')
     return json.loads(s[a:b+1])
 
+def request_with_retry(method, url, *, attempts=4, base_delay=2.0, **kwargs):
+    last = None
+    for i in range(attempts):
+        try:
+            r = requests.request(method, url, **kwargs)
+            if r.status_code not in RETRYABLE:
+                return r
+            last = RuntimeError(f"retryable HTTP {r.status_code}: {r.text[:500]}")
+        except requests.RequestException as e:
+            last = e
+        if i < attempts - 1:
+            time.sleep(base_delay * (2 ** i))
+    if last: raise last
+    raise RuntimeError('request failed without response')
+
 def openai(prompt):
     key=os.environ['OPENAI_API_KEY']; model=os.getenv('OPENAI_MODEL','gpt-5.6-sol')
-    r=requests.post(
-        'https://api.openai.com/v1/responses',
-        headers={'Authorization':f'Bearer {key}','Content-Type':'application/json'},
-        json={'model':model,'input':prompt,'max_output_tokens':350},
-        timeout=90
-    )
+    r=request_with_retry('POST','https://api.openai.com/v1/responses',headers={'Authorization':f'Bearer {key}','Content-Type':'application/json'},json={'model':model,'input':prompt,'max_output_tokens':350},timeout=90)
     r.raise_for_status(); j=r.json(); parts=[]
     for item in j.get('output',[]):
         for c in item.get('content',[]):
             if isinstance(c,dict) and c.get('text'): parts.append(c['text'])
     if not parts and j.get('output_text'): parts=[j['output_text']]
-    return model,'\\n'.join(parts)
+    return model,'\n'.join(parts)
 
 def anthropic(prompt):
     key=os.environ['ANTHROPIC_API_KEY']; model=os.getenv('ANTHROPIC_MODEL','claude-sonnet-5')
-    r=requests.post(
-        'https://api.anthropic.com/v1/messages',
-        headers={'x-api-key':key,'anthropic-version':'2023-06-01','content-type':'application/json'},
-        json={'model':model,'max_tokens':350,'messages':[{'role':'user','content':prompt}]},
-        timeout=90
-    )
-    r.raise_for_status(); j=r.json()
-    text=''.join(x.get('text','') for x in j.get('content',[]) if x.get('type')=='text')
+    r=request_with_retry('POST','https://api.anthropic.com/v1/messages',headers={'x-api-key':key,'anthropic-version':'2023-06-01','content-type':'application/json'},json={'model':model,'max_tokens':350,'messages':[{'role':'user','content':prompt}]},timeout=90)
+    r.raise_for_status(); j=r.json(); text=''.join(x.get('text','') for x in j.get('content',[]) if x.get('type')=='text')
     return model,text
 
 def gemini(prompt):
     key=os.environ['GEMINI_API_KEY']; model=os.getenv('GEMINI_MODEL','gemini-3.8-flash')
     u=f'https://generativelanguage.googleapis.com/v1beta/models/{model}:generateContent'
-    payload={
-        'contents':[{'parts':[{'text':prompt}]}],
-        'generationConfig':{
-            'maxOutputTokens':1024,
-            'responseMimeType':'application/json',
-            'thinkingConfig':{'thinkingLevel':'low'}
-        }
-    }
-    r=requests.post(
-        u,
-        headers={'x-goog-api-key':key,'Content-Type':'application/json'},
-        json=payload,
-        timeout=90
-    )
+    payload={'contents':[{'parts':[{'text':prompt}]}],'generationConfig':{'maxOutputTokens':1024,'responseMimeType':'application/json','thinkingConfig':{'thinkingLevel':'low'}}}
+    r=request_with_retry('POST',u,headers={'x-goog-api-key':key,'Content-Type':'application/json'},json=payload,timeout=90,attempts=5,base_delay=3.0)
     if not r.ok:
-        try:
-            detail=r.json()
-        except Exception:
-            detail=r.text[:1000]
+        try: detail=r.json()
+        except Exception: detail=r.text[:1000]
         raise RuntimeError(f'Gemini HTTP {r.status_code}: {detail}')
-    j=r.json()
-    text=''.join(
-        p.get('text','')
-        for c in j.get('candidates',[])
-        for p in c.get('content',{}).get('parts',[])
-        if isinstance(p,dict)
-    )
+    j=r.json(); text=''.join(p.get('text','') for c in j.get('candidates',[]) for p in c.get('content',{}).get('parts',[]) if isinstance(p,dict))
     if not text:
         finish=[(c.get('finishReason'), c.get('finishMessage')) for c in j.get('candidates',[])]
         raise RuntimeError(f'Gemini returned no text: finish={finish}')
     return model,text
 
 def score(case,obj):
-    status=str(obj.get('relationship_status','')).upper()
-    required=all(k in obj for k in ['relationship_status','directness','missing_link','reason'])
+    status=str(obj.get('relationship_status','')).upper(); required=all(k in obj for k in ['relationship_status','directness','missing_link','reason'])
     if not required: return 0
     if case.get('expected') and status!=case['expected']: return 0
     if case.get('expected_not') and status==case['expected_not']: return 0
     return 1
 
 def main():
-    providers={'openai':openai,'anthropic':anthropic,'gemini':gemini}
-    report={}; failed=[]
+    providers={'openai':openai,'anthropic':anthropic,'gemini':gemini}; report={}; failed=[]
     for name,fn in providers.items():
         rows=[]; total=0
         for case in CASES:
@@ -96,14 +79,11 @@ def main():
                 model,text=fn(case['prompt']); obj=extract_json(text); s=score(case,obj); total+=s
                 rows.append({'case':case['id'],'ok':bool(s),'latency_s':round(time.perf_counter()-t,2),'model':model,'result':obj})
             except Exception as e:
-                err=str(e)[:1000]
-                rows.append({'case':case['id'],'ok':False,'error':err})
-                print(json.dumps({'provider':name,'case':case['id'],'error':err},ensure_ascii=False))
+                err=str(e)[:1000]; rows.append({'case':case['id'],'ok':False,'error':err}); print(json.dumps({'provider':name,'case':case['id'],'error':err},ensure_ascii=False))
         report[name]={'score':total,'max':len(CASES),'cases':rows}
         if total < len(CASES): failed.append(name)
     (OUT/'model_eval.json').write_text(json.dumps(report,ensure_ascii=False,indent=2),encoding='utf-8')
     print(json.dumps({k:{'score':v['score'],'max':v['max']} for k,v in report.items()},ensure_ascii=False))
     if failed: raise SystemExit('Model evaluation failed: '+', '.join(failed))
 
-if __name__=='__main__':
-    main()
+if __name__=='__main__': main()
