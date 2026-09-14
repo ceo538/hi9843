@@ -140,9 +140,18 @@ class ArticleStore:
         reviewed_by = _text("reviewed_by", reviewed_by, 120)
         editor_note = _text("editor_note", editor_note, 5000, allow_empty=True)
         with self._connect() as conn:
-            row = conn.execute("SELECT id FROM article_versions WHERE id=?", (int(version_id),)).fetchone()
+            row = conn.execute(
+                "SELECT id,article_id,version_no FROM article_versions WHERE id=?",
+                (int(version_id),),
+            ).fetchone()
             if row is None:
                 raise ArticleError("article version does not exist")
+            latest = conn.execute(
+                "SELECT MAX(version_no) AS n FROM article_versions WHERE article_id=?",
+                (int(row["article_id"]),),
+            ).fetchone()
+            if int(row["version_no"]) != int(latest["n"]):
+                raise ArticleError("only the latest article version can be reviewed")
             conn.execute(
                 "UPDATE article_versions SET status=?,reviewed_by=?,reviewed_at=?,editor_note=? WHERE id=?",
                 (status, reviewed_by, _now(), editor_note, int(version_id)),
@@ -157,5 +166,27 @@ class ArticleStore:
             rows = conn.execute(
                 "SELECT * FROM article_versions WHERE article_id=? ORDER BY version_no DESC",
                 (int(article["id"]),),
+            ).fetchall()
+            return [self._decode(row) for row in rows]
+
+    def editorial_queue(self, limit: int = 100) -> list[dict[str, Any]]:
+        if isinstance(limit, bool) or not isinstance(limit, int) or not 1 <= limit <= 500:
+            raise ArticleError("limit must be 1..500")
+        with self._connect() as conn:
+            rows = conn.execute(
+                """
+                SELECT v.*, a.event_id, n.title AS source_title, n.source_name,
+                       n.classification AS source_classification, n.received_at
+                FROM article_versions v
+                JOIN articles a ON a.id=v.article_id
+                JOIN news_revisions n ON n.id=a.event_id
+                WHERE v.version_no=(
+                    SELECT MAX(v2.version_no) FROM article_versions v2 WHERE v2.article_id=v.article_id
+                )
+                  AND v.status IN ('DRAFT_READY','DRAFT_NEEDS_VERIFICATION')
+                ORDER BY v.created_at DESC, v.id DESC
+                LIMIT ?
+                """,
+                (limit,),
             ).fetchall()
             return [self._decode(row) for row in rows]
