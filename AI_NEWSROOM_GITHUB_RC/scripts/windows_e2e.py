@@ -42,7 +42,6 @@ try:
     assert runtime_payload["sources"]["registered"] == 0
     assert runtime_payload["queue"]["retryable"] == 0
     assert runtime_payload["publication_allowed"] is False
-    assert runtime_payload["human_approval_required"] is True
 
     event_response = requests.post(
         BASE + "/api/news/ingest",
@@ -80,21 +79,10 @@ try:
     )
     evidence.raise_for_status()
 
-    workflow = requests.get(BASE + f"/api/news/events/{event['id']}/workflow", timeout=5)
-    workflow.raise_for_status()
-    packet = workflow.json()
-    assert packet["draft"]["status"] == "DRAFT_READY"
-    assert packet["publication_allowed"] is False
-    assert packet["human_approval_required"] is True
-    version = packet["article_version"]
-    assert version and version["status"] == "DRAFT_READY"
-
-    queue = requests.get(BASE + "/api/editorial/queue", timeout=5)
-    queue.raise_for_status()
-    queue_items = queue.json()["items"]
-    assert [row["id"] for row in queue_items] == [version["id"]]
-    assert queue_items[0]["source_name"] == "Windows E2E"
-    assert queue_items[0]["source_title"] == "삼성전자 AI 데이터센터 투자"
+    # No workflow call is made before the operator opens the dashboard.
+    queue_before = requests.get(BASE + "/api/editorial/queue", timeout=5)
+    queue_before.raise_for_status()
+    assert queue_before.json()["items"] == []
 
     with sync_playwright() as pw:
         browser = pw.chromium.launch(headless=True)
@@ -104,26 +92,30 @@ try:
         assert page.locator("text=Runtime Health").count() >= 1
         assert page.locator("text=Operations").count() >= 1
         assert page.locator("text=NEVER_RUN").count() >= 1
+        assert page.locator("text=기사화 판단함").count() >= 1
         assert page.locator("text=삼성전자 AI 데이터센터 투자").count() >= 1
-        assert page.locator("text=Editorial Review Queue").count() >= 1
-        assert page.locator("text=DEV-8").count() >= 1
-        assert page.locator("button", has_text="승인").count() == 1
+        assert page.locator("button", has_text="기사화").count() == 1
+        assert page.locator("button", has_text="복사").count() == 0
 
-        reviewed = requests.post(
-            BASE + f"/api/articles/versions/{version['id']}/review",
-            json={"status": "EDITOR_APPROVED", "reviewed_by": "windows-e2e", "editor_note": "browser validation"},
-            timeout=5,
-        )
-        reviewed.raise_for_status()
-        reviewed_payload = reviewed.json()
-        assert reviewed_payload["status"] == "EDITOR_APPROVED"
-        assert reviewed_payload["publication_allowed"] is False
+        page.locator("button", has_text="기사화").click()
+        page.wait_for_function("() => document.body.innerText.includes('기사화 선택')", timeout=10000)
+        page.wait_for_function("() => document.querySelectorAll('button').length > 0", timeout=10000)
+        assert page.locator("button", has_text="복사").count() == 1
 
-        page.reload(wait_until="networkidle")
-        assert page.locator("text=승인 대기 초안이 없습니다.").count() >= 1
+        queue = requests.get(BASE + "/api/editorial/queue", timeout=5)
+        queue.raise_for_status()
+        queue_items = queue.json()["items"]
+        assert len(queue_items) == 1
+        assert queue_items[0]["source_name"] == "Windows E2E"
+        assert queue_items[0]["source_title"] == "삼성전자 AI 데이터센터 투자"
+        assert queue_items[0]["publication_allowed"] is False
+
+        feedback = requests.get(BASE + f"/api/news/events/{event['id']}/feedback", timeout=5)
+        feedback.raise_for_status()
+        assert feedback.json()["feedback"][-1]["note"] == "ARTICLEIZATION_SELECTED"
         browser.close()
 
-    print("WINDOWS_E2E_PASS DEV-8 RUNTIME_HEALTH WORKFLOW_DRAFT_REVIEWED HUMAN_GATED")
+    print("WINDOWS_E2E_PASS DEV-8 MANUAL_ARTICLEIZATION COPY_ONLY NO_PUBLICATION")
 finally:
     process.terminate()
     try:
