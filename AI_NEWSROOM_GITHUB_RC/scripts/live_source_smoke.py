@@ -11,6 +11,8 @@ import requests
 
 from app.korean_news_sources import KOREAN_BUSINESS_RSS_DEFAULTS
 
+CONTENT_MODE = "rss_metadata_only_no_article_page_scrape"
+
 
 def _host_allowed(url: str, domains: list[str]) -> bool:
     try:
@@ -33,6 +35,7 @@ def probe(source: dict, *, timeout: int) -> dict:
         "section": config.get("section"),
         "feed_url": url,
         "rights_status": config.get("rights_status"),
+        "content_mode": CONTENT_MODE,
         "ok": False,
     }
     try:
@@ -98,6 +101,7 @@ def main() -> int:
     publishers = sorted({str(row.get("publisher") or "") for row in results if row.get("publisher")})
     successful_publishers = sorted({str(row.get("publisher") or "") for row in results if row["ok"] and row.get("publisher")})
     report = {
+        "content_mode": CONTENT_MODE,
         "source_count": len(results),
         "success_count": successes,
         "failure_count": len(results) - successes,
