@@ -1,0 +1,55 @@
+name: AI NEWSROOM Development Tests
+
+on:
+  push:
+    branches: [codex/newsroom-development]
+    paths:
+      - AI_NEWSROOM_GITHUB_RC/app/**
+      - AI_NEWSROOM_GITHUB_RC/tests/**
+      - AI_NEWSROOM_GITHUB_RC/scripts/**
+      - AI_NEWSROOM_GITHUB_RC/requirements.txt
+      - .github/workflows/development-tests.yml
+  pull_request:
+    branches: [main]
+
+permissions:
+  contents: read
+
+concurrency:
+  group: newsroom-tests-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  unit-tests:
+    strategy:
+      fail-fast: false
+      matrix:
+        os: [ubuntu-latest, windows-latest]
+    runs-on: ${{ matrix.os }}
+    timeout-minutes: 10
+    defaults:
+      run:
+        working-directory: AI_NEWSROOM_GITHUB_RC
+    env:
+      PYTHONUTF8: '1'
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          persist-credentials: false
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+      - name: Install dependencies without API credentials
+        run: python -m pip install -r requirements.txt
+      - name: Check Python source syntax
+        run: python -m compileall -q app scripts
+      - name: Run local tests only, no live model calls
+        run: python -m pytest -q --junitxml=reports/development-tests.xml
+      - name: Save test results
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: development-tests-${{ matrix.os }}-${{ github.run_id }}-${{ github.run_attempt }}
+          path: AI_NEWSROOM_GITHUB_RC/reports/development-tests.xml
+          retention-days: 7
+          if-no-files-found: warn
