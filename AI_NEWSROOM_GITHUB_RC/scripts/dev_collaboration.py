@@ -129,7 +129,7 @@ def post(provider: str, model: str, prompt: str) -> dict[str, Any]:
         key = os.environ["ANTHROPIC_API_KEY"]
         url = "https://api.anthropic.com/v1/messages"
         headers = {"x-api-key": key, "anthropic-version": "2023-06-01"}
-        payload = {"model": model, "max_tokens": 6000,
+        payload = {"model": model, "max_tokens": 12000,
                    "messages": [{"role": "user", "content": prompt}]}
     elif provider == "gemini":
         key = os.environ["GEMINI_API_KEY"]
@@ -137,7 +137,8 @@ def post(provider: str, model: str, prompt: str) -> dict[str, Any]:
         headers = {"x-goog-api-key": key}
         payload = {"contents": [{"parts": [{"text": prompt}]}],
                    "generationConfig": {"maxOutputTokens": 3000,
-                                        "responseMimeType": "application/json"}}
+                                        "responseMimeType": "application/json",
+                                        "thinkingConfig": {"thinkingLevel": "low"}}}
     else:
         raise Blocked("PROVIDER_NOT_ALLOWED")
     # One initial attempt and at most one server-error retry. No blind quota loop.
@@ -172,7 +173,9 @@ def generate(provider: str, model: str, prompt: str) -> tuple[dict, dict]:
     data = post(provider, model, prompt)
     if provider == "anthropic":
         if data.get("stop_reason") != "end_turn":
-            raise Blocked("anthropic: INCOMPLETE_OR_REFUSED_RESPONSE")
+            reason = data.get("stop_reason")
+            safe_reason = reason if reason in {"max_tokens", "refusal", "pause_turn", "stop_sequence", "model_context_window_exceeded", "tool_use"} else "unknown"
+            raise Blocked("anthropic: RESPONSE_STOP_" + safe_reason)
         text = "".join(x.get("text", "") for x in data.get("content", [])
                        if isinstance(x, dict) and x.get("type") == "text")
         usage = data.get("usage", {})
