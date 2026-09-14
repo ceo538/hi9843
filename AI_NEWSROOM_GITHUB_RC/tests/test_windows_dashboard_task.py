@@ -17,6 +17,13 @@ def test_windows_installer_runs_local_dashboard_api_at_startup():
     assert "MultipleInstances IgnoreNew" in text
 
 
+def test_windows_installer_starts_runner_and_dashboard_without_reboot():
+    text = INSTALLER.read_text(encoding="utf-8")
+    assert "Start-ScheduledTask -TaskName $TaskName" in text
+    assert "Start-ScheduledTask -TaskName $ApiTaskName" in text
+    assert "start_immediately = $true" in text
+
+
 def test_windows_dashboard_task_is_removed_by_uninstaller():
     text = UNINSTALLER.read_text(encoding="utf-8")
     assert "AI NEWSROOM - Dashboard API" in text
