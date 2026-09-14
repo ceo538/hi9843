@@ -2,11 +2,11 @@ from datetime import datetime
 from pathlib import Path
 from typing import Literal
 
-from fastapi import FastAPI, HTTPException, Query
-from fastapi.responses import HTMLResponse
+from fastapi import FastAPI, HTTPException, Query, Request
+from fastapi.responses import HTMLResponse, JSONResponse
 from pydantic import BaseModel, Field, HttpUrl
 
-from app.ingestion import NewsStore
+from app.ingestion import NewsStore, ValidationError
 
 app = FastAPI(title="AI NEWSROOM", version="DEV-3")
 
@@ -23,6 +23,11 @@ class NewsIn(BaseModel):
 
 def store() -> NewsStore:
     return NewsStore()
+
+
+@app.exception_handler(ValidationError)
+def validation_error_handler(_request: Request, exc: ValidationError):
+    return JSONResponse(status_code=422, content={"detail": str(exc)})
 
 
 @app.get("/api/health")
