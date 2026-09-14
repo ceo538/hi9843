@@ -1,0 +1,63 @@
+name: AI NEWSROOM Editorial Model Smoke
+
+on:
+  push:
+    branches: [codex/newsroom-development]
+    paths:
+      - AI_NEWSROOM_GITHUB_RC/app/model_review.py
+      - AI_NEWSROOM_GITHUB_RC/scripts/live_editorial_review.py
+      - AI_NEWSROOM_GITHUB_RC/scripts/seed_editorial_smoke.py
+      - .github/workflows/editorial-model-smoke.yml
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: newsroom-editorial-model-smoke
+  cancel-in-progress: true
+
+jobs:
+  live-review:
+    runs-on: ubuntu-latest
+    timeout-minutes: 12
+    defaults:
+      run:
+        working-directory: AI_NEWSROOM_GITHUB_RC
+    env:
+      PYTHONUTF8: '1'
+      AI_NEWSROOM_DB_PATH: reports/editorial-smoke.db
+      OPENAI_API_KEY: ${{ secrets.OPENAI_API_KEY }}
+      ANTHROPIC_API_KEY: ${{ secrets.ANTHROPIC_API_KEY }}
+      GEMINI_API_KEY: ${{ secrets.GEMINI_API_KEY }}
+      OPENAI_MODEL: gpt-5.6-sol
+      ANTHROPIC_MODEL: claude-sonnet-5
+      GEMINI_MODEL: gemini-3.8-flash
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          persist-credentials: false
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+          cache: 'pip'
+          cache-dependency-path: AI_NEWSROOM_GITHUB_RC/requirements.txt
+      - name: Install dependencies
+        run: python -m pip install -r requirements.txt
+      - name: Seed verified synthetic editorial packet
+        id: seed
+        shell: bash
+        run: |
+          mkdir -p reports
+          EVENT_ID=$(python scripts/seed_editorial_smoke.py | tail -n 1)
+          echo "event_id=$EVENT_ID" >> "$GITHUB_OUTPUT"
+      - name: Run paid three-model editorial review
+        run: python scripts/live_editorial_review.py --live --event-id ${{ steps.seed.outputs.event_id }}
+      - name: Upload editorial review report
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: editorial-model-smoke-${{ github.run_id }}
+          path: AI_NEWSROOM_GITHUB_RC/reports/editorial-review
+          retention-days: 7
+          if-no-files-found: warn
