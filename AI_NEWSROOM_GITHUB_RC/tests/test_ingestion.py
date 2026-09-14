@@ -113,5 +113,4 @@ def test_url_credentials_rejected(tmp_path):
     c = client_for(tmp_path)
     payload = sample_payload()
     payload["source_url"] = "https://user:pass@example.com/article"
-    response = c.post("/api/news/ingest", json=payload)
-    assert response.status_code in (400, 422, 500)
+    assert c.post("/api/news/ingest", json=payload).status_code == 422
