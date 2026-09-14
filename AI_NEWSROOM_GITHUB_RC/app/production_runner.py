@@ -9,6 +9,7 @@ from typing import Any
 from app.company_sync import OpenDartCompanySync
 from app.ingestion import default_db_path
 from app.intelligence import IntelligenceStore
+from app.korean_news_sources import KOREAN_BUSINESS_SOURCE_KEYS, LEGACY_DEFAULT_SOURCE_KEYS
 from app.maintenance import DatabaseMaintenance
 from app.market_worker import MarketSnapshotWorker
 from app.newsroom_cycle import NewsroomCycle
@@ -63,9 +64,15 @@ class ProductionRunner:
         self.owner_id = owner_id or uuid.uuid4().hex
 
     def bootstrap(self) -> list[dict[str, Any]]:
-        if self.registry.list():
-            return self.registry.list()
-        return self.registry.bootstrap_defaults()
+        rows = self.registry.list()
+        if not rows:
+            return self.registry.bootstrap_defaults()
+        keys = {str(row.get("source_key") or "") for row in rows}
+        has_legacy_default = any(key in keys for key in LEGACY_DEFAULT_SOURCE_KEYS)
+        has_korean_defaults = any(key in keys for key in KOREAN_BUSINESS_SOURCE_KEYS)
+        if has_legacy_default and not has_korean_defaults:
+            return self.registry.bootstrap_defaults()
+        return rows
 
     def _state(self) -> dict[str, Any]:
         row = self.runtime.get_state("production_runner")
