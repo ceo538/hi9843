@@ -27,8 +27,10 @@ $plan = [ordered]@{
         "dashboard_api_reachable",
         "production_runner_heartbeat_fresh",
         "production_runner_has_completed_cycle",
-        "publication_gate_closed",
-        "human_approval_required",
+        "auto_draft_disabled",
+        "articleization_gate_required",
+        "publication_disabled",
+        "delivery_mode_manual_copy_only",
         "machine_credentials_present"
     )
 }
@@ -60,16 +62,20 @@ $dartConfigured = -not [string]::IsNullOrWhiteSpace([Environment]::GetEnvironmen
 $kisKeyConfigured = -not [string]::IsNullOrWhiteSpace([Environment]::GetEnvironmentVariable("KIS_APP_KEY", "Machine"))
 $kisSecretConfigured = -not [string]::IsNullOrWhiteSpace([Environment]::GetEnvironmentVariable("KIS_APP_SECRET", "Machine"))
 
-$publicationGateClosed = $false
-$humanApprovalRequired = $false
+$autoDraftDisabled = $false
+$articleizationGateRequired = $false
+$publicationDisabled = $false
+$manualCopyOnly = $false
 $runnerHeartbeatFresh = $false
 $runnerCompletedCycle = $false
 $runtimeStatus = $null
 $runnerHeartbeatState = $null
 $runnerHeartbeatAgeSeconds = $null
 if ($null -ne $health) {
-    $publicationGateClosed = ($health.publication_allowed -eq $false)
-    $humanApprovalRequired = ($health.human_approval_required -eq $true)
+    $autoDraftDisabled = ($health.auto_draft_enabled -eq $false)
+    $articleizationGateRequired = ($health.articleization_gate_required -eq $true)
+    $publicationDisabled = ($health.publication_enabled -eq $false)
+    $manualCopyOnly = ([string]$health.delivery_mode -eq "MANUAL_COPY_ONLY")
     $runtimeStatus = [string]$health.status
     if ($null -ne $health.runner_health) {
         $runnerHeartbeatFresh = ($health.runner_health.fresh -eq $true)
@@ -87,8 +93,10 @@ $ok = ($null -ne $runnerTask) -and
       ($null -ne $health) -and
       $runnerHeartbeatFresh -and
       $runnerCompletedCycle -and
-      $publicationGateClosed -and
-      $humanApprovalRequired -and
+      $autoDraftDisabled -and
+      $articleizationGateRequired -and
+      $publicationDisabled -and
+      $manualCopyOnly -and
       $dartConfigured -and
       $kisKeyConfigured -and
       $kisSecretConfigured
@@ -116,8 +124,10 @@ $result = [ordered]@{
         runner_heartbeat_state = $runnerHeartbeatState
         runner_heartbeat_age_seconds = $runnerHeartbeatAgeSeconds
         runner_completed_cycle = $runnerCompletedCycle
-        publication_gate_closed = $publicationGateClosed
-        human_approval_required = $humanApprovalRequired
+        auto_draft_disabled = $autoDraftDisabled
+        articleization_gate_required = $articleizationGateRequired
+        publication_disabled = $publicationDisabled
+        delivery_mode_manual_copy_only = $manualCopyOnly
     }
     credentials = [ordered]@{
         dart_api_key = $dartConfigured
