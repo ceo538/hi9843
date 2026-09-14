@@ -5,7 +5,7 @@
 <meta name="viewport" content="width=device-width,initial-scale=1">
 <title>AI NEWSROOM</title>
 <style>
-:root{color-scheme:dark}body{margin:0;background:#0a0e13;color:#eef3f9;font-family:Segoe UI,Apple SD Gothic Neo,Arial,sans-serif}.wrap{max-width:1240px;margin:auto;padding:24px}.top{display:flex;justify-content:space-between;gap:16px;align-items:end}.muted{color:#91a0b3}.status{padding:7px 10px;border:1px solid #2a3645;border-radius:999px;font-size:12px}.grid{display:grid;grid-template-columns:repeat(5,1fr);gap:12px;margin:20px 0}.card,.panel{background:#111821;border:1px solid #253141;border-radius:12px;padding:16px}.k{font-size:12px;color:#91a0b3}.v{font-size:24px;font-weight:750;margin-top:5px}.panel{margin-top:12px}.panel-head{display:flex;justify-content:space-between;gap:12px;align-items:center}.chips{display:flex;gap:7px;flex-wrap:wrap;margin-top:10px}.chip{border:1px solid #2b394a;border-radius:7px;padding:5px 7px;font-size:11px;color:#bcc8d8}table{width:100%;border-collapse:collapse;margin-top:10px}th,td{text-align:left;padding:10px 8px;border-bottom:1px solid #202a37;font-size:13px}th{color:#91a0b3;font-weight:600}.tag{font-size:11px;border:1px solid #314055;border-radius:6px;padding:3px 5px}.title{max-width:620px}.error{color:#ffb4ab}.actions{display:flex;gap:6px}.btn{border:1px solid #3b4b60;background:#17202b;color:#eef3f9;border-radius:7px;padding:6px 9px;cursor:pointer}.btn:hover{background:#202d3b}.reviewer{background:#0d141d;color:#eef3f9;border:1px solid #2b394a;border-radius:7px;padding:7px 9px;width:130px}@media(max-width:1000px){.grid{grid-template-columns:repeat(3,1fr)}}@media(max-width:850px){.grid{grid-template-columns:repeat(2,1fr)}.top,.panel-head{display:block}.title{max-width:280px}.reviewer{margin-top:8px}}@media(max-width:520px){.grid{grid-template-columns:1fr}.wrap{padding:14px}th:nth-child(3),td:nth-child(3){display:none}}
+:root{color-scheme:dark}body{margin:0;background:#0a0e13;color:#eef3f9;font-family:Segoe UI,Apple SD Gothic Neo,Arial,sans-serif}.wrap{max-width:1240px;margin:auto;padding:24px}.top{display:flex;justify-content:space-between;gap:16px;align-items:end}.muted{color:#91a0b3}.status{padding:7px 10px;border:1px solid #2a3645;border-radius:999px;font-size:12px}.grid{display:grid;grid-template-columns:repeat(5,1fr);gap:12px;margin:20px 0}.ops-grid{display:grid;grid-template-columns:repeat(5,1fr);gap:10px;margin-top:12px}.card,.panel,.ops-card{background:#111821;border:1px solid #253141;border-radius:12px;padding:16px}.ops-card{background:#0d141d}.k{font-size:12px;color:#91a0b3}.v{font-size:24px;font-weight:750;margin-top:5px}.ops-v{font-size:18px;font-weight:700;margin-top:5px}.panel{margin-top:12px}.panel-head{display:flex;justify-content:space-between;gap:12px;align-items:center}.chips{display:flex;gap:7px;flex-wrap:wrap;margin-top:10px}.chip{border:1px solid #2b394a;border-radius:7px;padding:5px 7px;font-size:11px;color:#bcc8d8}table{width:100%;border-collapse:collapse;margin-top:10px}th,td{text-align:left;padding:10px 8px;border-bottom:1px solid #202a37;font-size:13px}th{color:#91a0b3;font-weight:600}.tag{font-size:11px;border:1px solid #314055;border-radius:6px;padding:3px 5px}.title{max-width:620px}.error{color:#ffb4ab}.actions{display:flex;gap:6px}.btn{border:1px solid #3b4b60;background:#17202b;color:#eef3f9;border-radius:7px;padding:6px 9px;cursor:pointer}.btn:hover{background:#202d3b}.reviewer{background:#0d141d;color:#eef3f9;border:1px solid #2b394a;border-radius:7px;padding:7px 9px;width:130px}@media(max-width:1000px){.grid,.ops-grid{grid-template-columns:repeat(3,1fr)}}@media(max-width:850px){.grid,.ops-grid{grid-template-columns:repeat(2,1fr)}.top,.panel-head{display:block}.title{max-width:280px}.reviewer{margin-top:8px}}@media(max-width:520px){.grid,.ops-grid{grid-template-columns:1fr}.wrap{padding:14px}th:nth-child(3),td:nth-child(3){display:none}}
 </style>
 </head>
 <body>
@@ -20,6 +20,17 @@
   </div>
   <div class="panel"><div class="k">Implemented</div><div id="modules" class="chips"></div></div>
   <div class="panel">
+    <div class="panel-head"><div><div class="k">Operations</div><div class="muted" style="margin-top:4px">Production Runner · registered sources · durable work queue</div></div><div id="runtimeObserved" class="muted">-</div></div>
+    <div class="ops-grid">
+      <div class="ops-card"><div class="k">Runtime Health</div><div class="ops-v" id="runtimeHealth">-</div></div>
+      <div class="ops-card"><div class="k">Runner</div><div class="ops-v" id="runnerStatus">-</div></div>
+      <div class="ops-card"><div class="k">Sources</div><div class="ops-v" id="sourceStatus">-</div></div>
+      <div class="ops-card"><div class="k">Retryable Queue</div><div class="ops-v" id="retryableQueue">-</div></div>
+      <div class="ops-card"><div class="k">Exhausted Queue</div><div class="ops-v" id="exhaustedQueue">-</div></div>
+    </div>
+    <div id="sourceHealth"></div>
+  </div>
+  <div class="panel">
     <div class="panel-head"><div><div class="k">Editorial Review Queue</div><div class="muted" style="margin-top:4px">최신 초안만 승인 가능 · 승인 후에도 자동 발행되지 않음</div></div><label class="muted">Reviewer <input id="reviewer" class="reviewer" value="desk" maxlength="120"></label></div>
     <div id="queue"></div>
   </div>
@@ -27,6 +38,7 @@
 </div>
 <script>
 const esc=s=>String(s??'').replace(/[&<>"']/g,m=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[m]));
+const shortTime=s=>esc((s||'').replace('T',' ').slice(0,19));
 async function reviewVersion(id,status){
  const reviewed_by=document.getElementById('reviewer').value.trim();
  if(!reviewed_by){alert('Reviewer 이름을 입력하세요.');return}
@@ -38,14 +50,18 @@ async function reviewVersion(id,status){
 }
 async function load(){
  try{
-  const [h,s,n,q]=await Promise.all([fetch('/api/health').then(r=>r.json()),fetch('/api/system').then(r=>r.json()),fetch('/api/news/events?limit=30').then(r=>r.json()),fetch('/api/editorial/queue?limit=30').then(r=>r.json())]);
-  document.getElementById('status').textContent='● SYSTEM ONLINE';document.getElementById('release').textContent=h.release;
+  const [h,s,n,q,rt]=await Promise.all([fetch('/api/health').then(r=>r.json()),fetch('/api/system').then(r=>r.json()),fetch('/api/news/events?limit=30').then(r=>r.json()),fetch('/api/editorial/queue?limit=30').then(r=>r.json()),fetch('/api/runtime/status').then(r=>{if(!r.ok)throw new Error('runtime status failed');return r.json()})]);
+  const health=String(rt.status||'UNKNOWN').toUpperCase();
+  const statusEl=document.getElementById('status');statusEl.textContent=`● ${health}`;statusEl.classList.toggle('error',health==='FAILED');document.getElementById('release').textContent=h.release;
   const mods=s.implemented_modules||[];document.getElementById('modulesCount').textContent=mods.length;document.getElementById('modules').innerHTML=mods.map(x=>`<span class="chip">${esc(x)}</span>`).join('');
   const events=n.events||[];document.getElementById('eventCount').textContent=events.length;document.getElementById('dupeCount').textContent=events.filter(x=>x.classification==='DUPLICATE'||x.classification==='UPDATE').length;
   const queue=q.items||[];document.getElementById('queueCount').textContent=queue.length;
+  const runner=(rt.runtime&&rt.runtime.runner)||{};const sources=rt.sources||{};const work=rt.queue||{};
+  document.getElementById('runtimeHealth').textContent=health;document.getElementById('runnerStatus').textContent=String(runner.status||'NEVER_RUN');document.getElementById('sourceStatus').textContent=`${Number(sources.enabled||0)} enabled / ${Number(sources.failed||0)} failed`;document.getElementById('retryableQueue').textContent=Number(work.retryable||0);document.getElementById('exhaustedQueue').textContent=Number(work.exhausted||0);document.getElementById('runtimeObserved').textContent=`Observed ${shortTime(rt.observed_at)}`;
+  const sourceItems=sources.items||[];document.getElementById('sourceHealth').innerHTML=sourceItems.length?`<table><thead><tr><th>Source</th><th>Type</th><th>Enabled</th><th>Last success</th><th>Last error</th></tr></thead><tbody>${sourceItems.map(x=>`<tr><td>${esc(x.label||x.source_key)}</td><td>${esc(x.source_type)}</td><td>${x.enabled?'YES':'NO'}</td><td>${shortTime(x.last_success_at)}</td><td>${esc(x.last_error||'')}</td></tr>`).join('')}</tbody></table>`:'<div class="muted" style="padding:14px 0">등록된 수집 소스가 없습니다.</div>';
   document.getElementById('queue').innerHTML=queue.length?`<table><thead><tr><th>상태</th><th>초안</th><th>원문</th><th>액션</th></tr></thead><tbody>${queue.map(v=>`<tr><td><span class="tag">${esc(v.status)}</span></td><td class="title">${esc(v.headline)}</td><td>${esc(v.source_name)}</td><td><div class="actions"><button class="btn" onclick="reviewVersion(${Number(v.id)},'EDITOR_APPROVED')">승인</button><button class="btn" onclick="reviewVersion(${Number(v.id)},'REJECTED')">반려</button></div></td></tr>`).join('')}</tbody></table>`:'<div class="muted" style="padding:14px 0">승인 대기 초안이 없습니다.</div>';
   if(!events.length){document.getElementById('events').innerHTML='<div class="muted" style="padding:14px 0">수집된 이벤트가 없습니다.</div>';return}
-  document.getElementById('events').innerHTML=`<table><thead><tr><th>상태</th><th>제목</th><th>출처</th><th>수신시각</th></tr></thead><tbody>${events.map(e=>`<tr><td><span class="tag">${esc(e.classification)}</span></td><td class="title">${esc(e.title)}</td><td>${esc(e.source_name)}</td><td>${esc((e.received_at||'').replace('T',' ').slice(0,19))}</td></tr>`).join('')}</tbody></table>`;
+  document.getElementById('events').innerHTML=`<table><thead><tr><th>상태</th><th>제목</th><th>출처</th><th>수신시각</th></tr></thead><tbody>${events.map(e=>`<tr><td><span class="tag">${esc(e.classification)}</span></td><td class="title">${esc(e.title)}</td><td>${esc(e.source_name)}</td><td>${shortTime(e.received_at)}</td></tr>`).join('')}</tbody></table>`;
  }catch(e){document.getElementById('status').textContent='API ERROR';document.getElementById('status').classList.add('error');document.getElementById('events').innerHTML='<div class="error">대시보드 데이터를 불러오지 못했습니다.</div>'}
 }
 load();setInterval(load,30000);
