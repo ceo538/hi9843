@@ -35,6 +35,15 @@ try:
     else:
         raise RuntimeError("server failed to start")
 
+    runtime = requests.get(BASE + "/api/runtime/status", timeout=5)
+    runtime.raise_for_status()
+    runtime_payload = runtime.json()
+    assert runtime_payload["status"] == "NEVER_RUN"
+    assert runtime_payload["sources"]["registered"] == 0
+    assert runtime_payload["queue"]["retryable"] == 0
+    assert runtime_payload["publication_allowed"] is False
+    assert runtime_payload["human_approval_required"] is True
+
     event_response = requests.post(
         BASE + "/api/news/ingest",
         json={
@@ -92,7 +101,9 @@ try:
         page = browser.new_page(viewport={"width": 1280, "height": 900})
         page.goto(BASE + "/dashboard", wait_until="networkidle")
         assert "AI NEWSROOM" in page.title()
-        assert page.locator("text=SYSTEM ONLINE").count() >= 1
+        assert page.locator("text=Runtime Health").count() >= 1
+        assert page.locator("text=Operations").count() >= 1
+        assert page.locator("text=NEVER_RUN").count() >= 1
         assert page.locator("text=삼성전자 AI 데이터센터 투자").count() >= 1
         assert page.locator("text=Editorial Review Queue").count() >= 1
         assert page.locator("text=DEV-8").count() >= 1
@@ -112,7 +123,7 @@ try:
         assert page.locator("text=승인 대기 초안이 없습니다.").count() >= 1
         browser.close()
 
-    print("WINDOWS_E2E_PASS DEV-8 WORKFLOW_DRAFT_REVIEWED HUMAN_GATED")
+    print("WINDOWS_E2E_PASS DEV-8 RUNTIME_HEALTH WORKFLOW_DRAFT_REVIEWED HUMAN_GATED")
 finally:
     process.terminate()
     try:
