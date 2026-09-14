@@ -77,6 +77,12 @@ try:
     assert packet["draft"]["status"] == "DRAFT_READY"
     assert packet["publication_allowed"] is False
     assert packet["human_approval_required"] is True
+    version = packet["article_version"]
+    assert version and version["status"] == "DRAFT_READY"
+
+    queue = requests.get(BASE + "/api/editorial/queue", timeout=5)
+    queue.raise_for_status()
+    assert [row["id"] for row in queue.json()["items"]] == [version["id"]]
 
     with sync_playwright() as pw:
         browser = pw.chromium.launch(headless=True)
@@ -85,10 +91,25 @@ try:
         assert "AI NEWSROOM" in page.title()
         assert page.locator("text=SYSTEM ONLINE").count() >= 1
         assert page.locator("text=삼성전자 AI 데이터센터 투자").count() >= 1
-        assert page.locator("text=DEV-7").count() >= 1
+        assert page.locator("text=Editorial Review Queue").count() >= 1
+        assert page.locator("text=DEV-8").count() >= 1
+        assert page.locator("button", has_text="승인").count() == 1
+
+        reviewed = requests.post(
+            BASE + f"/api/articles/versions/{version['id']}/review",
+            json={"status": "EDITOR_APPROVED", "reviewed_by": "windows-e2e", "editor_note": "browser validation"},
+            timeout=5,
+        )
+        reviewed.raise_for_status()
+        reviewed_payload = reviewed.json()
+        assert reviewed_payload["status"] == "EDITOR_APPROVED"
+        assert reviewed_payload["publication_allowed"] is False
+
+        page.reload(wait_until="networkidle")
+        assert page.locator("text=승인 대기 초안이 없습니다.").count() >= 1
         browser.close()
 
-    print("WINDOWS_E2E_PASS DEV-7 WORKFLOW_DRAFT_READY HUMAN_GATED")
+    print("WINDOWS_E2E_PASS DEV-8 WORKFLOW_DRAFT_REVIEWED HUMAN_GATED")
 finally:
     process.terminate()
     try:
