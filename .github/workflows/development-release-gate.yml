@@ -5,12 +5,11 @@ on:
   push:
     branches: [codex/newsroom-development]
     paths:
-      - AI_NEWSROOM_GITHUB_RC/app/runtime.py
-      - AI_NEWSROOM_GITHUB_RC/app/maintenance.py
-      - AI_NEWSROOM_GITHUB_RC/app/scheduler.py
-      - AI_NEWSROOM_GITHUB_RC/scripts/runtime_preflight.py
-      - AI_NEWSROOM_GITHUB_RC/scripts/backup_database.py
-      - .github/workflows/development-release-gate.yml
+      - 'AI_NEWSROOM_GITHUB_RC/app/**'
+      - 'AI_NEWSROOM_GITHUB_RC/scripts/**'
+      - 'AI_NEWSROOM_GITHUB_RC/tests/**'
+      - 'AI_NEWSROOM_GITHUB_RC/requirements.txt'
+      - '.github/workflows/development-release-gate.yml'
 
 permissions:
   contents: read
