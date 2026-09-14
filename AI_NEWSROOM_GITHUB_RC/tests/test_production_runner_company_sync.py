@@ -92,6 +92,27 @@ def test_company_master_sync_failure_degrades_runner_without_stopping_other_task
     assert report["tasks"]["market"]["status"] == "SUCCESS"
 
 
+def test_failed_company_master_sync_retries_hourly_instead_of_every_cycle(tmp_path):
+    sync = FakeCompanySync(fail=True)
+    runner = _runner(tmp_path, sync)
+    start = datetime(2026, 9, 15, 0, 0, tzinfo=timezone.utc)
+
+    first = runner.run_once(now=start)
+    assert first["state"]["last_company_sync_attempt_at"] == start.isoformat()
+    assert sync.calls == 1
+
+    runner.run_once(now=start + timedelta(minutes=5))
+    assert sync.calls == 1
+
+    runner.run_once(now=start + timedelta(minutes=59))
+    assert sync.calls == 1
+
+    retried = runner.run_once(now=start + timedelta(minutes=60))
+    assert retried["errors"]["company_master"] == "RuntimeError"
+    assert retried["state"]["last_company_sync_attempt_at"] == (start + timedelta(minutes=60)).isoformat()
+    assert sync.calls == 2
+
+
 def test_company_master_sync_is_explicitly_disabled_without_dart_key(tmp_path, monkeypatch):
     monkeypatch.delenv("DART_API_KEY", raising=False)
     runner = _runner(tmp_path, None)
