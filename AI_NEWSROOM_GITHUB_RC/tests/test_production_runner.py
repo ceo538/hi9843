@@ -1,0 +1,131 @@
+from datetime import datetime, timedelta, timezone
+from pathlib import Path
+
+from app.production_runner import ProductionRunner
+from app.runtime import RuntimeStore
+
+
+class FakeRegistry:
+    def __init__(self):
+        self.rows = []
+        self.bootstrapped = 0
+
+    def list(self):
+        return list(self.rows)
+
+    def bootstrap_defaults(self):
+        self.bootstrapped += 1
+        self.rows = [{"source_key": "test"}]
+        return list(self.rows)
+
+
+class FakeNewsroomCycle:
+    def __init__(self):
+        self.calls = []
+
+    def run_once(self, *, now=None):
+        self.calls.append(now)
+        return {"status": "SUCCESS", "processed_event_count": 1, "publication_allowed": False}
+
+
+class FakeMarket:
+    def __init__(self):
+        self.calls = 0
+
+    def collect(self):
+        self.calls += 1
+        return {"status": "SUCCESS", "saved_count": 2}
+
+
+class FakeMaintenance:
+    def __init__(self):
+        self.integrity_calls = 0
+        self.backup_calls = 0
+
+    def integrity_check(self):
+        self.integrity_calls += 1
+        return {"ok": True, "result": ["ok"]}
+
+    def backup(self, destination, retain=10):
+        self.backup_calls += 1
+        return {"backup_path": str(Path(destination) / "backup.db"), "size_bytes": 1, "removed": []}
+
+
+def runner_for(tmp_path):
+    path = tmp_path / "newsroom.db"
+    runtime = RuntimeStore(path)
+    registry = FakeRegistry()
+    newsroom = FakeNewsroomCycle()
+    market = FakeMarket()
+    maintenance = FakeMaintenance()
+    runner = ProductionRunner(
+        path,
+        runtime=runtime,
+        registry=registry,
+        newsroom_cycle=newsroom,
+        market_worker=market,
+        maintenance=maintenance,
+        backup_dir=tmp_path / "backups",
+        owner_id="runner-a",
+    )
+    return runner, runtime, registry, newsroom, market, maintenance
+
+
+def test_first_cycle_runs_all_components_and_persists_state(tmp_path):
+    runner, runtime, registry, newsroom, market, maintenance = runner_for(tmp_path)
+    now = datetime(2026, 9, 15, 0, 0, tzinfo=timezone.utc)
+    report = runner.run_once(now=now)
+    assert report["status"] == "SUCCESS"
+    assert set(report["tasks"]) == {"newsroom", "market", "integrity", "backup"}
+    assert registry.bootstrapped == 1
+    assert len(newsroom.calls) == 1
+    assert market.calls == 1
+    assert maintenance.integrity_calls == 1
+    assert maintenance.backup_calls == 1
+    state = runtime.status()["runner"]
+    assert state["status"] == "SUCCESS"
+    assert state["last_cycle_at"] == now.isoformat()
+
+
+def test_intervals_skip_tasks_until_due(tmp_path):
+    runner, _runtime, _registry, newsroom, market, maintenance = runner_for(tmp_path)
+    start = datetime(2026, 9, 15, 0, 0, tzinfo=timezone.utc)
+    runner.run_once(now=start)
+    report = runner.run_once(now=start + timedelta(minutes=2))
+    assert report["status"] == "SUCCESS"
+    assert report["tasks"] == {}
+    assert len(newsroom.calls) == 1
+    assert market.calls == 1
+    assert maintenance.integrity_calls == 1
+    assert maintenance.backup_calls == 1
+
+    report = runner.run_once(now=start + timedelta(minutes=5))
+    assert set(report["tasks"]) == {"newsroom", "market"}
+    assert len(newsroom.calls) == 2
+    assert market.calls == 2
+
+
+def test_force_runs_all_tasks_even_when_not_due(tmp_path):
+    runner, *_ = runner_for(tmp_path)
+    start = datetime(2026, 9, 15, 0, 0, tzinfo=timezone.utc)
+    runner.run_once(now=start)
+    report = runner.run_once(now=start + timedelta(minutes=1), force=True)
+    assert set(report["tasks"]) == {"newsroom", "market", "integrity", "backup"}
+
+
+def test_runner_respects_existing_lease(tmp_path):
+    runner, runtime, *_ = runner_for(tmp_path)
+    now = datetime(2026, 9, 15, 0, 0, tzinfo=timezone.utc)
+    assert runtime.acquire_lease("production_runner", "other-owner", ttl_seconds=600, now=now) is True
+    report = runner.run_once(now=now)
+    assert report["status"] == "SKIPPED_LOCKED"
+    runtime.release_lease("production_runner", "other-owner")
+
+
+def test_expired_lease_allows_takeover(tmp_path):
+    path = tmp_path / "newsroom.db"
+    runtime = RuntimeStore(path)
+    start = datetime(2026, 9, 15, 0, 0, tzinfo=timezone.utc)
+    assert runtime.acquire_lease("production_runner", "a", ttl_seconds=30, now=start) is True
+    assert runtime.acquire_lease("production_runner", "b", ttl_seconds=30, now=start + timedelta(seconds=20)) is False
+    assert runtime.acquire_lease("production_runner", "b", ttl_seconds=30, now=start + timedelta(seconds=31)) is True
