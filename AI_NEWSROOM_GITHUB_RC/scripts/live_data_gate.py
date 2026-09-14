@@ -1,4 +1,4 @@
-import json, os, datetime, xml.etree.ElementTree as ET
+import json, os, datetime
 from pathlib import Path
 import requests, feedparser
 
@@ -8,8 +8,7 @@ report={}
 def dart():
     key=os.environ['DART_API_KEY']; today=datetime.datetime.now().strftime('%Y%m%d')
     r=requests.get('https://opendart.fss.or.kr/api/list.json',params={'crtfc_key':key,'bgn_de':today,'end_de':today,'page_count':1},timeout=30)
-    r.raise_for_status(); j=r.json(); status=str(j.get('status',''))
-    ok=status in {'000','013'}
+    r.raise_for_status(); j=r.json(); status=str(j.get('status','')); ok=status in {'000','013'}
     return {'ok':ok,'status':status,'message':j.get('message'),'total_count':j.get('total_count')}
 
 def kis():
@@ -25,10 +24,18 @@ def kis():
     return {'ok':str(j.get('rt_cd'))=='0' and bool(price),'rt_cd':j.get('rt_cd'),'msg':j.get('msg1'),'symbol':'005930','price':price}
 
 def rss():
-    url='https://nvidianews.nvidia.com/cats/press_release.xml'
-    r=requests.get(url,headers={'User-Agent':'AI-Newsroom-RC/1.0'},timeout=30); r.raise_for_status()
-    f=feedparser.loads(r.content)
-    return {'ok':len(f.entries)>0,'url':url,'entries':len(f.entries),'latest_title':f.entries[0].get('title') if f.entries else None}
+    urls=['https://nvidianews.nvidia.com/cats/press_release.xml','https://nvidianews.nvidia.com/rss']
+    errors=[]
+    for url in urls:
+        try:
+            r=requests.get(url,headers={'User-Agent':'AI-Newsroom-RC/1.0'},timeout=30); r.raise_for_status()
+            f=feedparser.parse(r.content)
+            if len(f.entries)>0:
+                return {'ok':True,'url':url,'entries':len(f.entries),'latest_title':f.entries[0].get('title')}
+            errors.append(f'{url}: no entries')
+        except Exception as e:
+            errors.append(f'{url}: {e}')
+    return {'ok':False,'error':' | '.join(errors)[:1000]}
 
 for name,fn in [('opendart',dart),('kis',kis),('nvidia_rss',rss)]:
     try: report[name]=fn()
