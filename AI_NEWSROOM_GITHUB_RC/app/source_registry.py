@@ -8,6 +8,7 @@ from typing import Any
 from urllib.parse import urlsplit
 
 from app.ingestion import NewsStore, default_db_path
+from app.korean_news_sources import KOREAN_BUSINESS_RSS_DEFAULTS, LEGACY_DEFAULT_SOURCE_KEYS
 
 _SCHEMA = """
 CREATE TABLE IF NOT EXISTS collector_sources (
@@ -55,6 +56,31 @@ def _http_url(value: str) -> str:
     if parsed.scheme not in {"http", "https"} or not parsed.hostname or parsed.username or parsed.password:
         raise SourceRegistryError("feed_url must be a credential-free http(s) URL")
     return value
+
+
+def _string_list(name: str, value: Any, *, max_items: int = 100) -> list[str]:
+    if value is None:
+        return []
+    if not isinstance(value, (list, tuple)):
+        raise SourceRegistryError(f"{name} must be a list")
+    if len(value) > max_items:
+        raise SourceRegistryError(f"{name} has too many values")
+    result: list[str] = []
+    for item in value:
+        if not isinstance(item, str):
+            raise SourceRegistryError(f"{name} must contain strings")
+        item = item.strip()
+        if not item or len(item) > 200:
+            raise SourceRegistryError(f"{name} contains an invalid value")
+        result.append(item)
+    return result
+
+
+def _short_text(name: str, value: Any, *, maxlen: int = 500) -> str:
+    text = str(value or "").strip()
+    if not text or len(text) > maxlen:
+        raise SourceRegistryError(f"{name} is required and must be <= {maxlen} chars")
+    return text
 
 
 class SourceRegistry:
@@ -112,6 +138,18 @@ class SourceRegistry:
             if not 1 <= max_entries <= 100:
                 raise SourceRegistryError("max_entries must be 1..100")
             config["max_entries"] = max_entries
+            for field in ("allowed_domains", "include_keywords", "exclude_keywords"):
+                if field in config:
+                    config[field] = _string_list(field, config[field])
+            for field, maxlen in (
+                ("scope", 80),
+                ("publisher", 200),
+                ("section", 100),
+                ("rights_status", 80),
+                ("rights_note", 500),
+            ):
+                if field in config:
+                    config[field] = _short_text(field, config[field], maxlen=maxlen)
         else:
             config = {"page_count": int(config.get("page_count", 100))}
             if not 1 <= config["page_count"] <= 100:
@@ -184,16 +222,27 @@ class SourceRegistry:
                 raise SourceRegistryError("source does not exist")
             return self._row(conn.execute("SELECT * FROM collector_sources WHERE source_key=?", (source_key,)).fetchone())
 
+    def _disable_legacy_defaults(self) -> None:
+        if not LEGACY_DEFAULT_SOURCE_KEYS:
+            return
+        placeholders = ",".join("?" for _ in LEGACY_DEFAULT_SOURCE_KEYS)
+        with self._connect() as conn:
+            conn.execute(
+                f"UPDATE collector_sources SET enabled=0,updated_at=? WHERE source_key IN ({placeholders})",
+                (_now(), *LEGACY_DEFAULT_SOURCE_KEYS),
+            )
+
     def bootstrap_defaults(self) -> list[dict[str, Any]]:
-        return [
-            self.upsert(
-                source_key="nvidia-official-rss",
-                source_type="RSS",
-                label="NVIDIA Official Newsroom",
-                config={"feed_url": "https://nvidianews.nvidia.com/cats/press_release.xml", "max_entries": 50},
-                interval_minutes=10,
-                enabled=True,
-            ),
+        """Upsert the curated Korean business-news allowlist plus OpenDART.
+
+        This is intentionally safe to call at every process start. Existing run
+        timestamps survive the upsert. The previous NVIDIA development default
+        is disabled in-place so an upgraded operational database does not keep
+        collecting an out-of-scope source.
+        """
+        self._disable_legacy_defaults()
+        rows = [self.upsert(**source) for source in KOREAN_BUSINESS_RSS_DEFAULTS]
+        rows.append(
             self.upsert(
                 source_key="opendart",
                 source_type="DART",
@@ -201,5 +250,6 @@ class SourceRegistry:
                 config={"page_count": 100},
                 interval_minutes=5,
                 enabled=True,
-            ),
-        ]
+            )
+        )
+        return rows
