@@ -175,11 +175,12 @@ class ArticleStore:
         with self._connect() as conn:
             rows = conn.execute(
                 """
-                SELECT v.*, a.event_id, n.title AS source_title, n.source_name,
+                SELECT v.*, a.event_id, n.title AS source_title, i.source_name,
                        n.classification AS source_classification, n.received_at
                 FROM article_versions v
                 JOIN articles a ON a.id=v.article_id
                 JOIN news_revisions n ON n.id=a.event_id
+                JOIN news_items i ON i.id=n.item_id
                 WHERE v.version_no=(
                     SELECT MAX(v2.version_no) FROM article_versions v2 WHERE v2.article_id=v.article_id
                 )
