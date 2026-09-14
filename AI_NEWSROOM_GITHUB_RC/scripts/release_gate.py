@@ -1,85 +1,26 @@
-name: AI NEWSROOM Final Release Gate
-
-on:
-  push:
-    branches: [ main ]
-  workflow_dispatch:
-
-permissions:
-  contents: read
-
-jobs:
-  final-gate:
-    runs-on: windows-latest
-    timeout-minutes: 30
-    defaults:
-      run:
-        working-directory: AI_NEWSROOM_GITHUB_RC
-
-    env:
-      OPENAI_API_KEY: ${{ secrets.OPENAI_API_KEY }}
-      ANTHROPIC_API_KEY: ${{ secrets.ANTHROPIC_API_KEY }}
-      GEMINI_API_KEY: ${{ secrets.GEMINI_API_KEY }}
-      DART_API_KEY: ${{ secrets.DART_API_KEY }}
-      KIS_APP_KEY: ${{ secrets.KIS_APP_KEY }}
-      KIS_APP_SECRET: ${{ secrets.KIS_APP_SECRET }}
-      OPENAI_MODEL: gpt-5.6-sol
-      ANTHROPIC_MODEL: claude-sonnet-5
-      GEMINI_MODEL: gemini-3.8-flash
-
-    steps:
-      - uses: actions/checkout@v4
-
-      - uses: actions/setup-python@v5
-        with:
-          python-version: '3.12'
-
-      - name: Install dependencies
-        shell: pwsh
-        run: |
-          python -m pip install --upgrade pip
-          pip install -r requirements.txt
-          python -m playwright install chromium
-
-      - name: Unit tests
-        run: pytest -q
-
-      - name: Windows browser E2E
-        shell: pwsh
-        run: |
-          New-Item -ItemType Directory -Force reports | Out-Null
-          python scripts/windows_e2e.py | Tee-Object -FilePath reports/windows_e2e.txt
-
-      - name: Live model evaluation
-        continue-on-error: true
-        run: python scripts/model_eval.py
-
-      - name: Live data validation
-        continue-on-error: true
-        run: python scripts/live_data_gate.py
-
-      - name: Final release gate
-        run: python scripts/release_gate.py
-
-      - name: Upload diagnostics
-        if: always()
-        uses: actions/upload-artifact@v4
-        with:
-          name: AI_NEWSROOM_DIAGNOSTICS
-          path: AI_NEWSROOM_GITHUB_RC/reports
-          retention-days: 14
-
-      - name: Build final package
-        if: success()
-        shell: pwsh
-        run: |
-          New-Item -ItemType Directory -Force dist | Out-Null
-          Compress-Archive -Path app,scripts,requirements.txt,README.md,reports -DestinationPath dist/AI_NEWSROOM_FINAL.zip -Force
-
-      - name: Upload final artifact
-        if: success()
-        uses: actions/upload-artifact@v4
-        with:
-          name: AI_NEWSROOM_FINAL
-          path: AI_NEWSROOM_GITHUB_RC/dist/AI_NEWSROOM_FINAL.zip
-          retention-days: 30
+import json
+from pathlib import Path
+needed=['model_eval.json','live_data_gate.json','windows_e2e.txt']
+r=Path('reports')
+missing=[x for x in needed if not (r/x).exists()]
+if missing:
+    raise SystemExit('Missing reports: '+', '.join(missing))
+models=json.loads((r/'model_eval.json').read_text(encoding='utf-8'))
+live=json.loads((r/'live_data_gate.json').read_text(encoding='utf-8'))
+if not all(v.get('score')==v.get('max') for v in models.values()):
+    raise SystemExit('Model gate not fully passed')
+if not all(v.get('ok') for v in live.values()):
+    raise SystemExit('Live data gate not fully passed')
+if 'PASS' not in (r/'windows_e2e.txt').read_text(encoding='utf-8'):
+    raise SystemExit('Windows E2E not passed')
+summary={
+    'status':'PASS',
+    'model_providers':list(models),
+    'live_sources':list(live),
+    'windows_e2e':'PASS'
+}
+(r/'RELEASE_GATE_PASS.json').write_text(
+    json.dumps(summary,ensure_ascii=False,indent=2),
+    encoding='utf-8'
+)
+print('RELEASE_GATE_PASS')
