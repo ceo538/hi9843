@@ -8,19 +8,18 @@ from typing import Any
 
 import requests
 
+from app.ingestion import default_db_path
+
 
 class MarketProviderError(RuntimeError):
     pass
 
 
-def _default_token_cache_path() -> Path | None:
+def _default_token_cache_path() -> Path:
     explicit = os.getenv("AI_NEWSROOM_KIS_TOKEN_CACHE")
     if explicit:
         return Path(explicit)
-    db_path = os.getenv("AI_NEWSROOM_DB_PATH")
-    if db_path:
-        return Path(db_path).expanduser().resolve().with_name("kis-token.json")
-    return None
+    return default_db_path().expanduser().with_name("kis-token.json")
 
 
 def _parse_utc(value: str | None) -> datetime | None:
@@ -58,7 +57,7 @@ class KISProvider:
 
     def _load_cached_token(self) -> None:
         path = self.token_cache_path
-        if path is None or not path.exists():
+        if not path.exists():
             return
         try:
             payload = json.loads(path.read_text(encoding="utf-8"))
@@ -75,7 +74,7 @@ class KISProvider:
 
     def _save_cached_token(self) -> None:
         path = self.token_cache_path
-        if path is None or not self._token or not self._token_expires_at:
+        if not self._token or not self._token_expires_at:
             return
         payload = {
             "app_key": self.app_key,
