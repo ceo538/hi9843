@@ -1,3 +1,6 @@
+from datetime import datetime, timedelta, timezone
+import json
+
 import pytest
 
 from app.market_provider import KISProvider, MarketProviderError
@@ -54,6 +57,83 @@ def test_quote_parses_kis_response_and_reuses_token():
     assert session.posts == 1
     assert session.gets == 2
     assert second["ticker"] == "005930"
+
+
+def test_token_cache_survives_provider_restart(tmp_path):
+    cache = tmp_path / "kis-token.json"
+    first_session = Session()
+    first = KISProvider(
+        app_key="key",
+        app_secret="secret",
+        session=first_session,
+        base_url="https://kis.test",
+        token_cache_path=cache,
+    )
+    first.quote("005930")
+    assert first_session.posts == 1
+    assert cache.exists()
+
+    second_session = Session()
+    second = KISProvider(
+        app_key="key",
+        app_secret="secret",
+        session=second_session,
+        base_url="https://kis.test",
+        token_cache_path=cache,
+    )
+    second.quote("005930")
+    assert second_session.posts == 0
+    assert second_session.gets == 1
+
+
+def test_expired_cached_token_is_not_reused(tmp_path):
+    cache = tmp_path / "kis-token.json"
+    cache.write_text(
+        json.dumps(
+            {
+                "app_key": "key",
+                "base_url": "https://kis.test",
+                "access_token": "stale-token",
+                "expires_at": (datetime.now(timezone.utc) - timedelta(minutes=1)).isoformat(),
+            }
+        ),
+        encoding="utf-8",
+    )
+    session = Session()
+    provider = KISProvider(
+        app_key="key",
+        app_secret="secret",
+        session=session,
+        base_url="https://kis.test",
+        token_cache_path=cache,
+    )
+    provider.quote("005930")
+    assert session.posts == 1
+
+
+def test_cache_for_different_app_key_is_ignored(tmp_path):
+    cache = tmp_path / "kis-token.json"
+    cache.write_text(
+        json.dumps(
+            {
+                "app_key": "old-key",
+                "base_url": "https://kis.test",
+                "access_token": "old-token",
+                "expires_at": (datetime.now(timezone.utc) + timedelta(hours=1)).isoformat(),
+            }
+        ),
+        encoding="utf-8",
+    )
+    session = Session()
+    provider = KISProvider(
+        app_key="key",
+        app_secret="secret",
+        session=session,
+        base_url="https://kis.test",
+        token_cache_path=cache,
+    )
+    provider.quote("005930")
+    assert session.posts == 1
 
 
 def test_invalid_ticker_is_rejected_without_network():
