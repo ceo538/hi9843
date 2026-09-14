@@ -9,8 +9,6 @@ on:
       - AI_NEWSROOM_GITHUB_RC/scripts/**
       - AI_NEWSROOM_GITHUB_RC/requirements.txt
       - .github/workflows/development-tests.yml
-  pull_request:
-    branches: [main]
 
 permissions:
   contents: read
