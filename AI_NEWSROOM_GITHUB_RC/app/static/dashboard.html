@@ -5,7 +5,7 @@
 <meta name="viewport" content="width=device-width,initial-scale=1">
 <title>AI NEWSROOM</title>
 <style>
-:root{color-scheme:dark}body{margin:0;background:#0a0e13;color:#eef3f9;font-family:Segoe UI,Apple SD Gothic Neo,Arial,sans-serif}.wrap{max-width:1320px;margin:auto;padding:24px}.top{display:flex;justify-content:space-between;gap:16px;align-items:end}.muted{color:#91a0b3}.status{padding:7px 10px;border:1px solid #2a3645;border-radius:999px;font-size:12px}.grid{display:grid;grid-template-columns:repeat(5,1fr);gap:12px;margin:20px 0}.ops-grid{display:grid;grid-template-columns:repeat(4,1fr);gap:10px;margin-top:12px}.card,.panel,.ops-card{background:#111821;border:1px solid #253141;border-radius:12px;padding:16px}.ops-card{background:#0d141d}.k{font-size:12px;color:#91a0b3}.v{font-size:24px;font-weight:750;margin-top:5px}.ops-v{font-size:18px;font-weight:700;margin-top:5px}.panel{margin-top:12px}.panel-head{display:flex;justify-content:space-between;gap:12px;align-items:center}.chips{display:flex;gap:7px;flex-wrap:wrap;margin-top:10px}.chip{border:1px solid #2b394a;border-radius:7px;padding:5px 7px;font-size:11px;color:#bcc8d8}table{width:100%;border-collapse:collapse;margin-top:10px}th,td{text-align:left;padding:10px 8px;border-bottom:1px solid #202a37;font-size:13px;vertical-align:top}th{color:#91a0b3;font-weight:600}.tag{font-size:11px;border:1px solid #314055;border-radius:6px;padding:3px 5px;white-space:nowrap}.title{max-width:620px}.error{color:#ffb4ab}.ok{color:#9ce6b4}.hold{color:#ffd38a}.actions{display:flex;gap:6px;flex-wrap:wrap}.btn{border:1px solid #3b4b60;background:#17202b;color:#eef3f9;border-radius:7px;padding:7px 10px;cursor:pointer}.btn:hover{background:#202d3b}.btn-primary{border-color:#4f7ec2;background:#183456}.btn-danger{border-color:#71424a}.article-box{background:#0d141d;border:1px solid #263344;border-radius:9px;padding:12px;margin:8px 0}.article-head{font-weight:700;margin-bottom:7px}.article-body{white-space:pre-wrap;color:#c7d2df;max-height:180px;overflow:auto;font-size:12px;line-height:1.55}.mode{padding:10px 12px;background:#0c1722;border:1px solid #25405e;border-radius:9px;margin-top:12px;color:#b9cee4}@media(max-width:1000px){.grid{grid-template-columns:repeat(3,1fr)}.ops-grid{grid-template-columns:repeat(2,1fr)}}@media(max-width:850px){.grid{grid-template-columns:repeat(2,1fr)}.top,.panel-head{display:block}.title{max-width:300px}}@media(max-width:520px){.grid,.ops-grid{grid-template-columns:1fr}.wrap{padding:14px}th:nth-child(3),td:nth-child(3){display:none}}
+:root{color-scheme:dark}body{margin:0;background:#0a0e13;color:#eef3f9;font-family:Segoe UI,Apple SD Gothic Neo,Arial,sans-serif}.wrap{max-width:1320px;margin:auto;padding:24px}.top{display:flex;justify-content:space-between;gap:16px;align-items:end}.muted{color:#91a0b3}.status{padding:7px 10px;border:1px solid #2a3645;border-radius:999px;font-size:12px}.grid{display:grid;grid-template-columns:repeat(5,1fr);gap:12px;margin:20px 0}.ops-grid{display:grid;grid-template-columns:repeat(4,1fr);gap:10px;margin-top:12px}.card,.panel,.ops-card{background:#111821;border:1px solid #253141;border-radius:12px;padding:16px}.ops-card{background:#0d141d}.k{font-size:12px;color:#91a0b3}.v{font-size:24px;font-weight:750;margin-top:5px}.ops-v{font-size:18px;font-weight:700;margin-top:5px}.panel{margin-top:12px}.panel-head{display:flex;justify-content:space-between;gap:12px;align-items:center}.chips{display:flex;gap:7px;flex-wrap:wrap;margin-top:10px}.chip{border:1px solid #2b394a;border-radius:7px;padding:5px 7px;font-size:11px;color:#bcc8d8}table{width:100%;border-collapse:collapse;margin-top:10px}th,td{text-align:left;padding:10px 8px;border-bottom:1px solid #202a37;font-size:13px;vertical-align:top}th{color:#91a0b3;font-weight:600}.tag{font-size:11px;border:1px solid #314055;border-radius:6px;padding:3px 5px;white-space:nowrap}.title{max-width:650px}.summary{color:#b5c2d1;font-size:12px;line-height:1.5;margin-top:6px;max-width:650px}.source-link{display:inline-block;margin-top:5px;color:#9cc7ff;text-decoration:none}.source-link:hover{text-decoration:underline}.error{color:#ffb4ab}.ok{color:#9ce6b4}.hold{color:#ffd38a}.actions{display:flex;gap:6px;flex-wrap:wrap}.btn{border:1px solid #3b4b60;background:#17202b;color:#eef3f9;border-radius:7px;padding:7px 10px;cursor:pointer}.btn:hover{background:#202d3b}.btn-primary{border-color:#4f7ec2;background:#183456}.btn-danger{border-color:#71424a}.article-box{background:#0d141d;border:1px solid #263344;border-radius:9px;padding:12px;margin:8px 0}.article-head{font-weight:700;margin-bottom:7px}.article-body{white-space:pre-wrap;color:#c7d2df;max-height:220px;overflow:auto;font-size:12px;line-height:1.55}.mode{padding:10px 12px;background:#0c1722;border:1px solid #25405e;border-radius:9px;margin-top:12px;color:#b9cee4}@media(max-width:1000px){.grid{grid-template-columns:repeat(3,1fr)}.ops-grid{grid-template-columns:repeat(2,1fr)}}@media(max-width:850px){.grid{grid-template-columns:repeat(2,1fr)}.top,.panel-head{display:block}.title,.summary{max-width:300px}}@media(max-width:520px){.grid,.ops-grid{grid-template-columns:1fr}.wrap{padding:14px}th:nth-child(3),td:nth-child(3){display:none}}
 </style>
 </head>
 <body>
@@ -20,7 +20,7 @@
     <div class="card"><div class="k">기사 작업본</div><div class="v" id="draftCount">-</div></div>
   </div>
   <div class="panel">
-    <div class="panel-head"><div><div class="k">Operations</div><div class="muted" style="margin-top:4px">자동 수집은 계속 실행 · 자동 기사 작성/자동 송고 없음</div></div><div id="runtimeObserved" class="muted">-</div></div>
+    <div class="panel-head"><div><div class="k">Operations</div><div class="muted" style="margin-top:4px">자동 수집은 계속 실행 · 자동 기사 작성 없음 · 외부 송고 기능 없음</div></div><div id="runtimeObserved" class="muted">-</div></div>
     <div class="ops-grid">
       <div class="ops-card"><div class="k">Runtime Health</div><div class="ops-v" id="runtimeHealth">-</div></div>
       <div class="ops-card"><div class="k">Runner</div><div class="ops-v" id="runnerStatus">-</div></div>
@@ -29,7 +29,7 @@
     </div>
   </div>
   <div class="panel">
-    <div class="panel-head"><div><div class="k">기사화 판단함</div><div class="muted" style="margin-top:4px">수집된 NEW/UPDATE 정보를 보고 기사화 여부를 직접 결정</div></div><div class="muted">기사화 · 보류 · 제외</div></div>
+    <div class="panel-head"><div><div class="k">기사화 판단함</div><div class="muted" style="margin-top:4px">수집된 제목·요약·원문을 확인한 뒤 기사화 여부를 직접 결정</div></div><div class="muted">기사화 · 보류 · 제외</div></div>
     <div id="decisions"></div>
   </div>
   <div class="panel">
@@ -43,6 +43,7 @@ const esc=s=>String(s??'').replace(/[&<>"']/g,m=>({'&':'&amp;','<':'&lt;','>':'&
 const shortTime=s=>esc((s||'').replace('T',' ').slice(0,19));
 const decisionNote={ARTICLEIZE:'ARTICLEIZATION_SELECTED',HOLD:'ARTICLEIZATION_HOLD',EXCLUDE:'ARTICLEIZATION_EXCLUDED'};
 let busy=new Set();
+let draftCache=new Map();
 async function postFeedback(eventId,type,note){
  const r=await fetch(`/api/news/events/${eventId}/feedback`,{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({feedback_type:type,note})});
  if(!r.ok){let detail='결정 저장 실패';try{detail=(await r.json()).detail||detail}catch(_e){}throw new Error(detail)}
@@ -65,8 +66,10 @@ async function decideEvent(eventId,decision){
   await load();
  }catch(e){alert(e.message||String(e))}finally{busy.delete(eventId)}
 }
-async function copyDraft(id,headline,body){
- const text=`${headline}\n\n${body}`;
+async function copyDraft(id){
+ const item=draftCache.get(Number(id));
+ if(!item){alert('복사할 기사 작업본을 찾지 못했습니다.');return}
+ const text=`${item.headline||''}\n\n${item.body||''}`;
  try{await navigator.clipboard.writeText(text);alert('기사 작업본을 클립보드에 복사했습니다.')}catch(_e){alert('브라우저 복사 권한을 확인해주세요.')}
 }
 function latestDecision(feedback){
@@ -93,6 +96,7 @@ async function load(){
   const feedbackRows=await Promise.all(events.map(async e=>{try{return await fetch(`/api/news/events/${e.id}/feedback`).then(r=>r.json())}catch(_e){return {feedback:[]}}}));
   const decisions=events.map((e,i)=>({...e,articleization:latestDecision(feedbackRows[i].feedback)}));
   const drafts=q.items||[];
+  draftCache=new Map(drafts.map(v=>[Number(v.id),v]));
   document.getElementById('eventCount').textContent=(n.events||[]).length;
   document.getElementById('decisionCount').textContent=decisions.filter(x=>x.articleization==='PENDING').length;
   document.getElementById('holdCount').textContent=decisions.filter(x=>x.articleization==='HOLD'||x.articleization==='EXCLUDE').length;
@@ -102,13 +106,16 @@ async function load(){
   document.getElementById('runnerStatus').textContent=String(runner.status||'NEVER_RUN');
   document.getElementById('sourceStatus').textContent=`${Number(sources.enabled||0)} enabled / ${Number(sources.failed||0)} failed`;
   document.getElementById('runtimeObserved').textContent=`Observed ${shortTime(rt.observed_at)}`;
-  document.getElementById('decisions').innerHTML=decisions.length?`<table><thead><tr><th>판단</th><th>제목</th><th>출처</th><th>수신시각</th><th>액션</th></tr></thead><tbody>${decisions.map(e=>{
+  document.getElementById('decisions').innerHTML=decisions.length?`<table><thead><tr><th>판단</th><th>수집 정보</th><th>출처</th><th>수신시각</th><th>액션</th></tr></thead><tbody>${decisions.map(e=>{
    const state=e.articleization;
    const stateLabel=state==='ARTICLEIZE'?'기사화 선택':state==='HOLD'?'보류':state==='EXCLUDE'?'제외':'대기';
    const stateClass=state==='ARTICLEIZE'?'ok':state==='HOLD'?'hold':state==='EXCLUDE'?'error':'';
-   return `<tr><td><span class="tag ${stateClass}">${esc(stateLabel)}</span></td><td class="title">${esc(e.title)}</td><td>${esc(e.source_name)}</td><td>${shortTime(e.received_at)}</td><td><div class="actions"><button class="btn btn-primary" onclick="decideEvent(${Number(e.id)},'ARTICLEIZE')">기사화</button><button class="btn" onclick="decideEvent(${Number(e.id)},'HOLD')">보류</button><button class="btn btn-danger" onclick="decideEvent(${Number(e.id)},'EXCLUDE')">제외</button></div></td></tr>`
+   const body=String(e.body||'').replace(/\s+/g,' ').trim();
+   const summary=body.length>320?body.slice(0,320)+'…':body;
+   const link=e.source_url?`<a class="source-link" href="${esc(e.source_url)}" target="_blank" rel="noopener noreferrer">원문 열기</a>`:'';
+   return `<tr><td><span class="tag ${stateClass}">${esc(stateLabel)}</span></td><td class="title"><b>${esc(e.title)}</b>${summary?`<div class="summary">${esc(summary)}</div>`:''}</td><td>${esc(e.source_name)}<br>${link}</td><td>${shortTime(e.received_at)}</td><td><div class="actions"><button class="btn btn-primary" onclick="decideEvent(${Number(e.id)},'ARTICLEIZE')">기사화</button><button class="btn" onclick="decideEvent(${Number(e.id)},'HOLD')">보류</button><button class="btn btn-danger" onclick="decideEvent(${Number(e.id)},'EXCLUDE')">제외</button></div></td></tr>`
   }).join('')}</tbody></table>`:'<div class="muted" style="padding:14px 0">기사화 판단 대상이 없습니다.</div>';
-  document.getElementById('drafts').innerHTML=drafts.length?drafts.map(v=>`<div class="article-box"><div class="article-head">${esc(v.headline)}</div><div class="muted">${esc(v.source_name)} · ${shortTime(v.created_at)} · ${esc(v.status)}</div><div class="article-body">${esc(v.body)}</div><div class="actions" style="margin-top:10px"><button class="btn btn-primary" onclick='copyDraft(${Number(v.id)},${JSON.stringify(String(v.headline||''))},${JSON.stringify(String(v.body||''))})'>복사</button></div></div>`).join(''):'<div class="muted" style="padding:14px 0">아직 기사화한 작업본이 없습니다.</div>';
+  document.getElementById('drafts').innerHTML=drafts.length?drafts.map(v=>`<div class="article-box"><div class="article-head">${esc(v.headline)}</div><div class="muted">${esc(v.source_name)} · ${shortTime(v.created_at)} · ${esc(v.status)}</div><div class="article-body">${esc(v.body)}</div><div class="actions" style="margin-top:10px"><button class="btn btn-primary" onclick="copyDraft(${Number(v.id)})">복사</button></div></div>`).join(''):'<div class="muted" style="padding:14px 0">아직 기사화한 작업본이 없습니다.</div>';
   const sourceItems=sources.items||[];
   document.getElementById('sourceHealth').innerHTML=sourceItems.length?`<table><thead><tr><th>Source</th><th>Type</th><th>Enabled</th><th>Last success</th><th>Last error</th></tr></thead><tbody>${sourceItems.map(x=>`<tr><td>${esc(x.label||x.source_key)}</td><td>${esc(x.source_type)}</td><td>${x.enabled?'YES':'NO'}</td><td>${shortTime(x.last_success_at)}</td><td>${esc(x.last_error||'')}</td></tr>`).join('')}</tbody></table>`:'<div class="muted" style="padding:14px 0">등록된 수집 소스가 없습니다.</div>';
  }catch(e){document.getElementById('status').textContent='API ERROR';document.getElementById('status').classList.add('error');document.getElementById('decisions').innerHTML='<div class="error">대시보드 데이터를 불러오지 못했습니다.</div>'}
