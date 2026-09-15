@@ -5,13 +5,15 @@ ROOT = Path(__file__).resolve().parents[1]
 VERIFIER = ROOT / "scripts" / "verify_windows_runtime.ps1"
 
 
-def test_windows_runtime_verifier_checks_tasks_api_and_human_gate():
+def test_windows_runtime_verifier_checks_tasks_api_and_manual_articleization_mode():
     text = VERIFIER.read_text(encoding="utf-8")
     assert "AI NEWSROOM - Production Runner" in text
     assert "AI NEWSROOM - Dashboard API" in text
     assert "/api/runtime/status" in text
-    assert "publication_allowed" in text
-    assert "human_approval_required" in text
+    assert "auto_draft_enabled" in text
+    assert "articleization_gate_required" in text
+    assert "publication_enabled" in text
+    assert "MANUAL_COPY_ONLY" in text
     assert "Invoke-RestMethod" in text
     assert "Get-ScheduledTask" in text
 
@@ -25,6 +27,18 @@ def test_windows_runtime_verifier_requires_fresh_completed_runner_cycle():
     assert "$runnerHeartbeatFresh -and" in text
     assert "$runnerCompletedCycle -and" in text
     assert "runner_heartbeat_age_seconds" in text
+
+
+def test_windows_runtime_verifier_requires_manual_copy_delivery_contract():
+    text = VERIFIER.read_text(encoding="utf-8")
+    assert "$autoDraftDisabled -and" in text
+    assert "$articleizationGateRequired -and" in text
+    assert "$publicationDisabled -and" in text
+    assert "$manualCopyOnly -and" in text
+    assert "auto_draft_disabled = $autoDraftDisabled" in text
+    assert "articleization_gate_required = $articleizationGateRequired" in text
+    assert "publication_disabled = $publicationDisabled" in text
+    assert "delivery_mode_manual_copy_only = $manualCopyOnly" in text
 
 
 def test_windows_runtime_verifier_checks_machine_credentials_without_printing_values():
