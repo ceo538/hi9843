@@ -34,6 +34,10 @@ def _due(last_at: str | None, interval_minutes: int, now: datetime) -> bool:
     return now >= last + timedelta(minutes=interval_minutes)
 
 
+def _env_flag(name: str) -> bool:
+    return str(os.getenv(name) or "").strip().lower() in {"1", "true", "yes", "on"}
+
+
 class ProductionRunner:
     """Single-instance operational loop for the local AI NEWSROOM runtime."""
 
@@ -56,8 +60,10 @@ class ProductionRunner:
         self.newsroom_cycle = newsroom_cycle or NewsroomCycle(self.path)
         self.market_worker = market_worker or MarketSnapshotWorker(self.path)
         self.maintenance = maintenance or DatabaseMaintenance(self.path)
+        self.disable_dart = _env_flag("AI_NEWSROOM_DISABLE_DART")
+        self.disable_kis = _env_flag("AI_NEWSROOM_DISABLE_KIS")
         self.company_sync = company_sync
-        if self.company_sync is None and os.getenv("DART_API_KEY"):
+        if self.company_sync is None and not self.disable_dart and os.getenv("DART_API_KEY"):
             self.company_sync = OpenDartCompanySync(IntelligenceStore(self.path))
         self.backup_dir = Path(backup_dir) if backup_dir is not None else self.path.parent / "backups"
         self.owner_id = owner_id or uuid.uuid4().hex
@@ -80,6 +86,11 @@ class ProductionRunner:
         self._sources_bootstrapped = True
         return rows
 
+    def _company_master_default_status(self) -> str:
+        if self.disable_dart:
+            return "DISABLED_BY_CONFIG"
+        return "READY" if self.company_sync is not None else "DISABLED_NO_DART_API_KEY"
+
     def _state(self) -> dict[str, Any]:
         row = self.runtime.get_state("production_runner")
         if row is None:
@@ -92,7 +103,8 @@ class ProductionRunner:
                 "last_integrity_at": None,
                 "last_backup_at": None,
                 "last_cycle_at": None,
-                "company_master_status": "READY" if self.company_sync is not None else "DISABLED_NO_DART_API_KEY",
+                "market_status": "DISABLED_BY_CONFIG" if self.disable_kis else "READY",
+                "company_master_status": self._company_master_default_status(),
             }
         value = dict(row["value"])
         value.setdefault("last_newsroom_at", None)
@@ -102,10 +114,8 @@ class ProductionRunner:
         value.setdefault("last_integrity_at", None)
         value.setdefault("last_backup_at", None)
         value.setdefault("last_cycle_at", None)
-        value.setdefault(
-            "company_master_status",
-            "READY" if self.company_sync is not None else "DISABLED_NO_DART_API_KEY",
-        )
+        value.setdefault("market_status", "DISABLED_BY_CONFIG" if self.disable_kis else "READY")
+        value.setdefault("company_master_status", self._company_master_default_status())
         return value
 
     @staticmethod
@@ -218,12 +228,16 @@ class ProductionRunner:
 
             self.runtime.renew_lease("production_runner", self.owner_id, ttl_seconds=900, now=now)
 
-            if force or _due(state.get("last_market_at"), market_interval_minutes, now):
+            if self.disable_kis:
+                state["market_status"] = "DISABLED_BY_CONFIG"
+            elif force or _due(state.get("last_market_at"), market_interval_minutes, now):
                 try:
                     tasks["market"] = self.market_worker.collect()
                     state["last_market_at"] = stamp
+                    state["market_status"] = str(tasks["market"].get("status") or "UNKNOWN")
                 except Exception as exc:
                     task_errors["market"] = type(exc).__name__
+                    state["market_status"] = "FAILED"
 
             company_due = self.company_sync is not None and self._company_sync_due(
                 state,
@@ -231,7 +245,9 @@ class ProductionRunner:
                 success_interval_minutes=company_sync_interval_minutes,
                 retry_interval_minutes=company_sync_retry_minutes,
             )
-            if self.company_sync is not None and (force or company_due):
+            if self.disable_dart:
+                state["company_master_status"] = "DISABLED_BY_CONFIG"
+            elif self.company_sync is not None and (force or company_due):
                 state["last_company_sync_attempt_at"] = stamp
                 try:
                     tasks["company_master"] = self.company_sync.sync()
@@ -285,6 +301,10 @@ class ProductionRunner:
                     "last_tasks": sorted(tasks),
                     "last_errors": task_errors,
                     "consecutive_fatal_errors": 0,
+                    "integrations": {
+                        "dart": "DISABLED" if self.disable_dart else "ENABLED",
+                        "kis": "DISABLED" if self.disable_kis else "ENABLED",
+                    },
                 }
             )
             self.runtime.set_state("production_runner", state, now=now)
