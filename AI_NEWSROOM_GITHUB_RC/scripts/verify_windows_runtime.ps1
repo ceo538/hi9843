@@ -15,6 +15,14 @@ $machineDbPath = [Environment]::GetEnvironmentVariable("AI_NEWSROOM_DB_PATH", "M
 $dbPath = if ($machineDbPath) { $machineDbPath } else { "C:\AI_NEWSROOM_DATA\newsroom.db" }
 $tokenCache = Join-Path (Split-Path -Parent $dbPath) "kis-token.json"
 
+function Test-Flag([string]$Name) {
+    $value = [Environment]::GetEnvironmentVariable($Name, "Machine")
+    return @("1", "true", "yes", "on") -contains ([string]$value).Trim().ToLowerInvariant()
+}
+
+$dartDisabled = Test-Flag "AI_NEWSROOM_DISABLE_DART"
+$kisDisabled = Test-Flag "AI_NEWSROOM_DISABLE_KIS"
+
 $plan = [ordered]@{
     task_name = $TaskName
     api_task_name = $ApiTaskName
@@ -22,6 +30,10 @@ $plan = [ordered]@{
     db_path = $dbPath
     kis_token_cache = $tokenCache
     timeout_seconds = $TimeoutSeconds
+    integrations = [ordered]@{
+        dart_disabled = $dartDisabled
+        kis_disabled = $kisDisabled
+    }
     checks = @(
         "scheduled_tasks_present",
         "dashboard_api_reachable",
@@ -31,7 +43,7 @@ $plan = [ordered]@{
         "articleization_gate_required",
         "publication_disabled",
         "delivery_mode_manual_copy_only",
-        "machine_credentials_present"
+        "external_integrations_configured_or_disabled"
     )
 }
 
@@ -88,6 +100,9 @@ if ($null -ne $health) {
     }
 }
 
+$dartReady = $dartDisabled -or $dartConfigured
+$kisReady = $kisDisabled -or ($kisKeyConfigured -and $kisSecretConfigured)
+
 $ok = ($null -ne $runnerTask) -and
       ($null -ne $apiTask) -and
       ($null -ne $health) -and
@@ -97,9 +112,8 @@ $ok = ($null -ne $runnerTask) -and
       $articleizationGateRequired -and
       $publicationDisabled -and
       $manualCopyOnly -and
-      $dartConfigured -and
-      $kisKeyConfigured -and
-      $kisSecretConfigured
+      $dartReady -and
+      $kisReady
 
 $result = [ordered]@{
     ok = $ok
@@ -128,6 +142,10 @@ $result = [ordered]@{
         articleization_gate_required = $articleizationGateRequired
         publication_disabled = $publicationDisabled
         delivery_mode_manual_copy_only = $manualCopyOnly
+    }
+    integrations = [ordered]@{
+        dart = if ($dartDisabled) { "DISABLED" } elseif ($dartConfigured) { "CONFIGURED" } else { "MISSING" }
+        kis = if ($kisDisabled) { "DISABLED" } elseif ($kisKeyConfigured -and $kisSecretConfigured) { "CONFIGURED" } else { "MISSING" }
     }
     credentials = [ordered]@{
         dart_api_key = $dartConfigured
