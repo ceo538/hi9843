@@ -5,13 +5,13 @@
 <meta name="viewport" content="width=device-width,initial-scale=1">
 <title>AI NEWSROOM</title>
 <style>
-:root{color-scheme:dark}body{margin:0;background:#0a0e13;color:#eef3f9;font-family:Segoe UI,Apple SD Gothic Neo,Arial,sans-serif}.wrap{max-width:1320px;margin:auto;padding:24px}.top{display:flex;justify-content:space-between;gap:16px;align-items:end}.muted{color:#91a0b3}.status{padding:7px 10px;border:1px solid #2a3645;border-radius:999px;font-size:12px}.grid{display:grid;grid-template-columns:repeat(5,1fr);gap:12px;margin:20px 0}.ops-grid{display:grid;grid-template-columns:repeat(4,1fr);gap:10px;margin-top:12px}.card,.panel,.ops-card{background:#111821;border:1px solid #253141;border-radius:12px;padding:16px}.ops-card{background:#0d141d}.k{font-size:12px;color:#91a0b3}.v{font-size:24px;font-weight:750;margin-top:5px}.ops-v{font-size:18px;font-weight:700;margin-top:5px}.panel{margin-top:12px}.panel-head{display:flex;justify-content:space-between;gap:12px;align-items:center}.chips{display:flex;gap:7px;flex-wrap:wrap;margin-top:10px}.chip{border:1px solid #2b394a;border-radius:7px;padding:5px 7px;font-size:11px;color:#bcc8d8}table{width:100%;border-collapse:collapse;margin-top:10px}th,td{text-align:left;padding:10px 8px;border-bottom:1px solid #202a37;font-size:13px;vertical-align:top}th{color:#91a0b3;font-weight:600}.tag{font-size:11px;border:1px solid #314055;border-radius:6px;padding:3px 5px;white-space:nowrap}.title{max-width:650px}.summary{color:#b5c2d1;font-size:12px;line-height:1.5;margin-top:6px;max-width:650px}.source-link{display:inline-block;margin-top:5px;color:#9cc7ff;text-decoration:none}.source-link:hover{text-decoration:underline}.error{color:#ffb4ab}.ok{color:#9ce6b4}.hold{color:#ffd38a}.actions{display:flex;gap:6px;flex-wrap:wrap}.btn{border:1px solid #3b4b60;background:#17202b;color:#eef3f9;border-radius:7px;padding:7px 10px;cursor:pointer}.btn:hover{background:#202d3b}.btn-primary{border-color:#4f7ec2;background:#183456}.btn-danger{border-color:#71424a}.article-box{background:#0d141d;border:1px solid #263344;border-radius:9px;padding:12px;margin:8px 0}.article-head{font-weight:700;margin-bottom:7px}.article-body{white-space:pre-wrap;color:#c7d2df;max-height:220px;overflow:auto;font-size:12px;line-height:1.55}.mode{padding:10px 12px;background:#0c1722;border:1px solid #25405e;border-radius:9px;margin-top:12px;color:#b9cee4}@media(max-width:1000px){.grid{grid-template-columns:repeat(3,1fr)}.ops-grid{grid-template-columns:repeat(2,1fr)}}@media(max-width:850px){.grid{grid-template-columns:repeat(2,1fr)}.top,.panel-head{display:block}.title,.summary{max-width:300px}}@media(max-width:520px){.grid,.ops-grid{grid-template-columns:1fr}.wrap{padding:14px}th:nth-child(3),td:nth-child(3){display:none}}
+:root{color-scheme:dark}body{margin:0;background:#0a0e13;color:#eef3f9;font-family:Segoe UI,Apple SD Gothic Neo,Arial,sans-serif}.wrap{max-width:1320px;margin:auto;padding:24px}.top{display:flex;justify-content:space-between;gap:16px;align-items:end}.muted{color:#91a0b3}.status{padding:7px 10px;border:1px solid #2a3645;border-radius:999px;font-size:12px}.grid{display:grid;grid-template-columns:repeat(5,1fr);gap:12px;margin:20px 0}.ops-grid{display:grid;grid-template-columns:repeat(4,1fr);gap:10px;margin-top:12px}.card,.panel,.ops-card{background:#111821;border:1px solid #253141;border-radius:12px;padding:16px}.ops-card{background:#0d141d}.k{font-size:12px;color:#91a0b3}.v{font-size:24px;font-weight:750;margin-top:5px}.ops-v{font-size:18px;font-weight:700;margin-top:5px}.panel{margin-top:12px}.panel-head{display:flex;justify-content:space-between;gap:12px;align-items:center}.chips{display:flex;gap:7px;flex-wrap:wrap;margin-top:10px}.chip{border:1px solid #2b394a;border-radius:7px;padding:5px 7px;font-size:11px;color:#bcc8d8}table{width:100%;border-collapse:collapse;margin-top:10px}th,td{text-align:left;padding:10px 8px;border-bottom:1px solid #202a37;font-size:13px;vertical-align:top}th{color:#91a0b3;font-weight:600}.tag{font-size:11px;border:1px solid #314055;border-radius:6px;padding:3px 5px;white-space:nowrap}.title{max-width:650px}.summary{color:#b5c2d1;font-size:12px;line-height:1.5;margin-top:6px;max-width:650px}.source-link{display:inline-block;margin-top:5px;color:#9cc7ff;text-decoration:none}.source-link:hover{text-decoration:underline}.error{color:#ffb4ab}.ok{color:#9ce6b4}.hold{color:#ffd38a}.actions{display:flex;gap:6px;flex-wrap:wrap}.btn{border:1px solid #3b4b60;background:#17202b;color:#eef3f9;border-radius:7px;padding:7px 10px;cursor:pointer}.btn:hover{background:#202d3b}.btn-primary{border-color:#4f7ec2;background:#183456}.btn-danger{border-color:#71424a}.article-box{background:#0d141d;border:1px solid #263344;border-radius:9px;padding:12px;margin:8px 0;transition:border-color .2s,box-shadow .2s}.article-box.focus{border-color:#6fa7ef;box-shadow:0 0 0 2px rgba(111,167,239,.18)}.article-head{font-weight:700;margin-bottom:7px}.article-body{white-space:pre-wrap;color:#c7d2df;max-height:220px;overflow:auto;font-size:12px;line-height:1.55}.mode{padding:10px 12px;background:#0c1722;border:1px solid #25405e;border-radius:9px;margin-top:12px;color:#b9cee4}@media(max-width:1000px){.grid{grid-template-columns:repeat(3,1fr)}.ops-grid{grid-template-columns:repeat(2,1fr)}}@media(max-width:850px){.grid{grid-template-columns:repeat(2,1fr)}.top,.panel-head{display:block}.title,.summary{max-width:300px}}@media(max-width:520px){.grid,.ops-grid{grid-template-columns:1fr}.wrap{padding:14px}th:nth-child(3),td:nth-child(3){display:none}}
 </style>
 </head>
 <body>
 <div class="wrap">
   <div class="top"><div><h1>AI NEWSROOM</h1><div class="muted">개인용 기사 발굴·작성 워크벤치</div></div><div id="status" class="status">API 확인 중</div></div>
-  <div class="mode"><b>운영 방식</b> · 뉴스는 자동 수집·정리만 합니다. 기사 초안은 사용자가 <b>기사화</b>를 눌렀을 때만 생성되며, 외부 매체 송고 기능은 없습니다. 완성본은 <b>복사</b> 후 사용자가 직접 붙여넣습니다.</div>
+  <div class="mode"><b>운영 방식</b> · 뉴스는 자동 수집·정리만 합니다. 기사 초안은 사용자가 <b>기사화</b>를 눌렀을 때만 생성되며, 생성이 끝나면 해당 <b>기사 작업본</b>으로 이동합니다. 외부 매체 송고 기능은 없습니다. 완성본은 <b>복사</b> 후 사용자가 직접 붙여넣습니다.</div>
   <div class="grid">
     <div class="card"><div class="k">Release</div><div class="v" id="release">-</div></div>
     <div class="card"><div class="k">Recent Events</div><div class="v" id="eventCount">-</div></div>
@@ -32,7 +32,7 @@
     <div class="panel-head"><div><div class="k">기사화 판단함</div><div class="muted" style="margin-top:4px">중복 재수집에 밀리지 않는 최신 NEW/UPDATE 기사만 표시</div></div><div class="muted">기사화 · 보류 · 제외</div></div>
     <div id="decisions"></div>
   </div>
-  <div class="panel">
+  <div class="panel" id="draftPanel">
     <div class="panel-head"><div><div class="k">기사 작업본</div><div class="muted" style="margin-top:4px">기사화 선택 후 생성된 초안 · 외부 전송 없이 복사만 제공</div></div></div>
     <div id="drafts"></div>
   </div>
@@ -48,6 +48,13 @@ async function postFeedback(eventId,type,note){
  const r=await fetch(`/api/news/events/${eventId}/feedback`,{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({feedback_type:type,note})});
  if(!r.ok){let detail='결정 저장 실패';try{detail=(await r.json()).detail||detail}catch(_e){}throw new Error(detail)}
 }
+function scrollToDraft(eventId){
+ const el=document.getElementById(`draft-event-${Number(eventId)}`);
+ if(!el){alert('저장된 기사 작업본이 없습니다. 검증 조건으로 초안 생성이 보류됐을 수 있습니다.');return}
+ el.scrollIntoView({behavior:'smooth',block:'center'});
+ el.classList.add('focus');
+ setTimeout(()=>el.classList.remove('focus'),2200);
+}
 async function decideEvent(eventId,decision){
  if(busy.has(eventId))return;busy.add(eventId);
  try{
@@ -57,7 +64,12 @@ async function decideEvent(eventId,decision){
    const result=await r.json();
    await postFeedback(eventId,'USEFUL',decisionNote.ARTICLEIZE);
    const draft=(result.draft||{}).status||'UNKNOWN';
-   if(draft==='BLOCKED') alert('기사화는 선택됐지만 검증 조건 때문에 초안 생성이 보류됐습니다.');
+   if(draft==='BLOCKED'){
+    alert('기사화는 선택됐지만 검증 조건 때문에 초안 생성이 보류됐습니다.');
+   }
+   await load();
+   if(result.article_version) scrollToDraft(eventId);
+   return;
   }else if(decision==='HOLD'){
    await postFeedback(eventId,'NEEDS_REVIEW',decisionNote.HOLD);
   }else if(decision==='EXCLUDE'){
@@ -116,9 +128,12 @@ async function load(){
    const body=String(e.body||'').replace(/\s+/g,' ').trim();
    const summary=body.length>320?body.slice(0,320)+'…':body;
    const link=e.source_url?`<a class="source-link" href="${esc(e.source_url)}" target="_blank" rel="noopener noreferrer">원문 열기</a>`:'';
-   return `<tr><td><span class="tag ${stateClass}">${esc(stateLabel)}</span></td><td class="title"><b>${esc(e.title)}</b>${summary?`<div class="summary">${esc(summary)}</div>`:''}</td><td>${esc(e.source_name)}<br>${link}</td><td>${shortTime(e.received_at)}</td><td><div class="actions"><button class="btn btn-primary" onclick="decideEvent(${Number(e.id)},'ARTICLEIZE')">기사화</button><button class="btn" onclick="decideEvent(${Number(e.id)},'HOLD')">보류</button><button class="btn btn-danger" onclick="decideEvent(${Number(e.id)},'EXCLUDE')">제외</button></div></td></tr>`
+   const primary=state==='ARTICLEIZE'
+    ?`<button class="btn btn-primary" onclick="scrollToDraft(${Number(e.id)})">작업본 보기</button>`
+    :`<button class="btn btn-primary" onclick="decideEvent(${Number(e.id)},'ARTICLEIZE')">기사화</button>`;
+   return `<tr><td><span class="tag ${stateClass}">${esc(stateLabel)}</span></td><td class="title"><b>${esc(e.title)}</b>${summary?`<div class="summary">${esc(summary)}</div>`:''}</td><td>${esc(e.source_name)}<br>${link}</td><td>${shortTime(e.received_at)}</td><td><div class="actions">${primary}<button class="btn" onclick="decideEvent(${Number(e.id)},'HOLD')">보류</button><button class="btn btn-danger" onclick="decideEvent(${Number(e.id)},'EXCLUDE')">제외</button></div></td></tr>`
   }).join('')}</tbody></table>`:'<div class="muted" style="padding:14px 0">기사화 판단 대상이 없습니다.</div>';
-  document.getElementById('drafts').innerHTML=drafts.length?drafts.map(v=>`<div class="article-box"><div class="article-head">${esc(v.headline)}</div><div class="muted">${esc(v.source_name)} · ${shortTime(v.created_at)} · ${esc(v.status)}</div><div class="article-body">${esc(v.body)}</div><div class="actions" style="margin-top:10px"><button class="btn btn-primary" onclick="copyDraft(${Number(v.id)})">복사</button></div></div>`).join(''):'<div class="muted" style="padding:14px 0">아직 기사화한 작업본이 없습니다.</div>';
+  document.getElementById('drafts').innerHTML=drafts.length?drafts.map(v=>`<div class="article-box" id="draft-event-${Number(v.event_id)}"><div class="article-head">${esc(v.headline)}</div><div class="muted">${esc(v.source_name)} · ${shortTime(v.created_at)} · ${esc(v.status)}</div><div class="article-body">${esc(v.body)}</div><div class="actions" style="margin-top:10px"><button class="btn btn-primary" onclick="copyDraft(${Number(v.id)})">복사</button></div></div>`).join(''):'<div class="muted" style="padding:14px 0">아직 기사화한 작업본이 없습니다.</div>';
   const sourceItems=sources.items||[];
   document.getElementById('sourceHealth').innerHTML=sourceItems.length?`<table><thead><tr><th>Source</th><th>Type</th><th>Enabled</th><th>Last success</th><th>Last error</th></tr></thead><tbody>${sourceItems.map(x=>`<tr><td>${esc(x.label||x.source_key)}</td><td>${esc(x.source_type)}</td><td>${x.enabled?'YES':'NO'}</td><td>${shortTime(x.last_success_at)}</td><td>${esc(x.last_error||'')}</td></tr>`).join('')}</tbody></table>`:'<div class="muted" style="padding:14px 0">등록된 수집 소스가 없습니다.</div>';
  }catch(e){document.getElementById('status').textContent='API ERROR';document.getElementById('status').classList.add('error');document.getElementById('decisions').innerHTML='<div class="error">대시보드 데이터를 불러오지 못했습니다.</div>'}
