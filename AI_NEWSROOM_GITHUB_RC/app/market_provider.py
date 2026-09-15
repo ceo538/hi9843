@@ -43,6 +43,7 @@ class KISProvider:
         session: Any = requests,
         base_url: str = "https://openapi.koreainvestment.com:9443",
         token_cache_path: Path | str | None = None,
+        user_agent: str | None = None,
     ) -> None:
         self.app_key = app_key or os.getenv("KIS_APP_KEY")
         self.app_secret = app_secret or os.getenv("KIS_APP_SECRET")
@@ -51,9 +52,23 @@ class KISProvider:
         self.session = session
         self.base_url = base_url.rstrip("/")
         self.token_cache_path = Path(token_cache_path) if token_cache_path is not None else _default_token_cache_path()
+        self.user_agent = user_agent or os.getenv("KIS_USER_AGENT") or (
+            "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36"
+        )
         self._token: str | None = None
         self._token_expires_at: datetime | None = None
         self._load_cached_token()
+
+    def _base_headers(self) -> dict[str, str]:
+        # Match the headers used by Korea Investment's official Open Trading API
+        # samples. In particular, the provider may reject generic automation
+        # user agents at the gateway before credential validation.
+        return {
+            "Content-Type": "application/json",
+            "Accept": "text/plain",
+            "charset": "UTF-8",
+            "User-Agent": self.user_agent,
+        }
 
     def _load_cached_token(self) -> None:
         path = self.token_cache_path
@@ -101,6 +116,7 @@ class KISProvider:
         try:
             response = self.session.post(
                 f"{self.base_url}/oauth2/tokenP",
+                headers=self._base_headers(),
                 json={
                     "grant_type": "client_credentials",
                     "appkey": self.app_key,
@@ -131,6 +147,7 @@ class KISProvider:
         if not ticker.isdigit() or len(ticker) != 6:
             raise MarketProviderError("KIS domestic ticker must be six digits")
         headers = {
+            **self._base_headers(),
             "authorization": f"Bearer {self._access_token()}",
             "appkey": self.app_key,
             "appsecret": self.app_secret,
