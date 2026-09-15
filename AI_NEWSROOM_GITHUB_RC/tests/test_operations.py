@@ -1,3 +1,6 @@
+import sqlite3
+from contextlib import contextmanager
+
 import pytest
 
 from app.ingestion import NewsStore
@@ -36,6 +39,26 @@ def test_feedback_requires_existing_event(tmp_path):
     assert len(ops.feedback_for_event(event["id"])) == 1
     with pytest.raises(OperationsError):
         ops.record_feedback(event_id=9999, feedback_type="USEFUL")
+
+
+def test_feedback_retries_transient_sqlite_lock(tmp_path, monkeypatch):
+    path, event = make_event(tmp_path)
+    ops = OperationsStore(path)
+    original_connect = ops._connect
+    attempts = {"count": 0}
+
+    @contextmanager
+    def flaky_connect():
+        if attempts["count"] < 2:
+            attempts["count"] += 1
+            raise sqlite3.OperationalError("database is locked")
+        with original_connect() as conn:
+            yield conn
+
+    monkeypatch.setattr(ops, "_connect", flaky_connect)
+    item = ops.record_feedback(event_id=event["id"], feedback_type="NEEDS_REVIEW", note="retry")
+    assert item["feedback_type"] == "NEEDS_REVIEW"
+    assert attempts["count"] == 2
 
 
 def test_audit_payload_round_trip(tmp_path):
