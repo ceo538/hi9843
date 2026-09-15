@@ -1,0 +1,51 @@
+name: AI NEWSROOM Development Collaboration
+
+on:
+  push:
+    branches: [codex/newsroom-development]
+    paths: [docs/tasks/news-ingestion-v1.json]
+
+permissions:
+  contents: read
+
+concurrency:
+  group: newsroom-development-collaboration
+  cancel-in-progress: false
+
+jobs:
+  propose-and-review:
+    if: github.repository == 'ceo538/hi9843'
+    runs-on: ubuntu-latest
+    timeout-minutes: 12
+    defaults:
+      run:
+        working-directory: AI_NEWSROOM_GITHUB_RC
+    env:
+      PYTHONUTF8: '1'
+      PYTHONUNBUFFERED: '1'
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          persist-credentials: false
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+      - name: Install HTTP client without model credentials
+        run: python -m pip install 'requests>=2.32,<3'
+      - name: Validate collaboration safeguards without API calls
+        run: python -m unittest discover -s tests -p test_dev_collaboration.py -v
+      - name: Claude implementation proposal then Gemini independent review
+        env:
+          ANTHROPIC_API_KEY: ${{ secrets.ANTHROPIC_API_KEY }}
+          GEMINI_API_KEY: ${{ secrets.GEMINI_API_KEY }}
+          ANTHROPIC_MODEL: claude-sonnet-5
+          GEMINI_MODEL: gemini-3.8-flash
+        run: python scripts/dev_collaboration.py --live
+      - name: Save proposals and reviews, not a final release
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: development-collaboration-${{ github.run_id }}-${{ github.run_attempt }}
+          path: AI_NEWSROOM_GITHUB_RC/reports/collaboration/collaboration.json
+          retention-days: 7
+          if-no-files-found: warn
