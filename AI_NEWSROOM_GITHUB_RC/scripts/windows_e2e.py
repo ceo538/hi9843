@@ -41,7 +41,10 @@ try:
     assert runtime_payload["status"] == "NEVER_RUN"
     assert runtime_payload["sources"]["registered"] == 0
     assert runtime_payload["queue"]["retryable"] == 0
-    assert runtime_payload["publication_allowed"] is False
+    assert runtime_payload["auto_draft_enabled"] is False
+    assert runtime_payload["articleization_gate_required"] is True
+    assert runtime_payload["publication_enabled"] is False
+    assert runtime_payload["delivery_mode"] == "MANUAL_COPY_ONLY"
 
     event_response = requests.post(
         BASE + "/api/news/ingest",
@@ -79,7 +82,7 @@ try:
     )
     evidence.raise_for_status()
 
-    # No workflow call is made before the operator opens the dashboard.
+    # Before an operator decision there must be no article version.
     queue_before = requests.get(BASE + "/api/editorial/queue", timeout=5)
     queue_before.raise_for_status()
     assert queue_before.json()["items"] == []
@@ -94,17 +97,23 @@ try:
         assert page.locator("text=NEVER_RUN").count() >= 1
         assert page.locator("text=기사화 판단함").count() >= 1
         assert page.locator("text=삼성전자 AI 데이터센터 투자").count() >= 1
+        assert page.locator("text=원문 열기").count() >= 1
         assert page.locator("button", has_text="기사화").count() == 1
         assert page.locator("button", has_text="복사").count() == 0
 
         page.locator("button", has_text="기사화").click()
         page.wait_for_function("() => document.body.innerText.includes('기사화 선택')", timeout=10000)
-        page.wait_for_function("() => document.querySelectorAll('button').length > 0", timeout=10000)
-        assert page.locator("button", has_text="복사").count() == 1
 
-        queue = requests.get(BASE + "/api/editorial/queue", timeout=5)
-        queue.raise_for_status()
-        queue_items = queue.json()["items"]
+        # Verify persisted articleization state before checking its presentation.
+        queue_items = []
+        deadline = time.time() + 10
+        while time.time() < deadline:
+            queue = requests.get(BASE + "/api/editorial/queue", timeout=5)
+            queue.raise_for_status()
+            queue_items = queue.json()["items"]
+            if queue_items:
+                break
+            time.sleep(0.25)
         assert len(queue_items) == 1
         assert queue_items[0]["source_name"] == "Windows E2E"
         assert queue_items[0]["source_title"] == "삼성전자 AI 데이터센터 투자"
@@ -113,6 +122,11 @@ try:
         feedback = requests.get(BASE + f"/api/news/events/{event['id']}/feedback", timeout=5)
         feedback.raise_for_status()
         assert feedback.json()["feedback"][-1]["note"] == "ARTICLEIZATION_SELECTED"
+
+        # Reload proves the local working draft is durable and copyable.
+        page.reload(wait_until="networkidle")
+        assert page.locator("text=기사화 선택").count() >= 1
+        assert page.locator("button", has_text="복사").count() == 1
         browser.close()
 
     print("WINDOWS_E2E_PASS DEV-8 MANUAL_ARTICLEIZATION COPY_ONLY NO_PUBLICATION")
