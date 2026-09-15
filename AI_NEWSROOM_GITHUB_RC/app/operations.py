@@ -2,9 +2,11 @@ from __future__ import annotations
 
 import json
 import sqlite3
+import time
+from contextlib import contextmanager
 from datetime import datetime, timezone
 from pathlib import Path
-from typing import Any
+from typing import Any, Callable
 
 from app.ingestion import NewsStore, default_db_path
 
@@ -70,11 +72,36 @@ class OperationsStore:
         with self._connect() as conn:
             conn.executescript(_SCHEMA)
 
-    def _connect(self) -> sqlite3.Connection:
-        conn = sqlite3.connect(self.path, timeout=30)
+    @contextmanager
+    def _connect(self):
+        conn = sqlite3.connect(self.path, timeout=30.0)
         conn.row_factory = sqlite3.Row
         conn.execute("PRAGMA foreign_keys=ON")
-        return conn
+        conn.execute("PRAGMA busy_timeout=30000")
+        try:
+            yield conn
+            conn.commit()
+        except Exception:
+            conn.rollback()
+            raise
+        finally:
+            conn.close()
+
+    def _write_with_retry(self, operation: Callable[[sqlite3.Connection], dict[str, Any]]) -> dict[str, Any]:
+        delays = (0.05, 0.1, 0.2, 0.4, 0.8)
+        for attempt in range(len(delays) + 1):
+            try:
+                with self._connect() as conn:
+                    return operation(conn)
+            except sqlite3.OperationalError as exc:
+                message = str(exc).lower()
+                retryable = "locked" in message or "busy" in message
+                if not retryable:
+                    raise
+                if attempt >= len(delays):
+                    raise OperationsError("database is busy; retry the operation") from exc
+                time.sleep(delays[attempt])
+        raise OperationsError("database write failed")
 
     def upsert_watchlist(
         self,
@@ -96,7 +123,8 @@ class OperationsStore:
         if not isinstance(enabled, bool):
             raise OperationsError("enabled must be boolean")
         now = _now()
-        with self._connect() as conn:
+
+        def write(conn: sqlite3.Connection) -> dict[str, Any]:
             conn.execute(
                 "INSERT INTO watchlist(subject_key,subject_type,label,priority,reason,enabled,created_at,updated_at) "
                 "VALUES(?,?,?,?,?,?,?,?) ON CONFLICT(subject_key) DO UPDATE SET "
@@ -104,6 +132,8 @@ class OperationsStore:
                 (subject_key, subject_type, label, priority, reason, int(enabled), now, now),
             )
             return dict(conn.execute("SELECT * FROM watchlist WHERE subject_key=?", (subject_key,)).fetchone())
+
+        return self._write_with_retry(write)
 
     def list_watchlist(self, *, enabled_only: bool = True) -> list[dict[str, Any]]:
         with self._connect() as conn:
@@ -120,14 +150,18 @@ class OperationsStore:
         if feedback_type not in FEEDBACK_TYPES:
             raise OperationsError("unsupported feedback_type")
         note = _text("note", note, 5000, allow_empty=True)
-        with self._connect() as conn:
-            if conn.execute("SELECT 1 FROM news_revisions WHERE id=?", (int(event_id),)).fetchone() is None:
+        event_id = int(event_id)
+
+        def write(conn: sqlite3.Connection) -> dict[str, Any]:
+            if conn.execute("SELECT 1 FROM news_revisions WHERE id=?", (event_id,)).fetchone() is None:
                 raise OperationsError("event does not exist")
             cur = conn.execute(
                 "INSERT INTO user_feedback(event_id,feedback_type,note,created_at) VALUES(?,?,?,?)",
-                (int(event_id), feedback_type, note, _now()),
+                (event_id, feedback_type, note, _now()),
             )
             return dict(conn.execute("SELECT * FROM user_feedback WHERE id=?", (int(cur.lastrowid),)).fetchone())
+
+        return self._write_with_retry(write)
 
     def feedback_for_event(self, event_id: int) -> list[dict[str, Any]]:
         with self._connect() as conn:
@@ -146,7 +180,8 @@ class OperationsStore:
             raise OperationsError("payload must be JSON serializable") from exc
         if len(payload_json) > 20000:
             raise OperationsError("payload is too large")
-        with self._connect() as conn:
+
+        def write(conn: sqlite3.Connection) -> dict[str, Any]:
             cur = conn.execute(
                 "INSERT INTO audit_log(action,entity_type,entity_id,payload_json,created_at) VALUES(?,?,?,?,?)",
                 (action, entity_type, entity_id_text, payload_json, _now()),
@@ -154,6 +189,8 @@ class OperationsStore:
             row = dict(conn.execute("SELECT * FROM audit_log WHERE id=?", (int(cur.lastrowid),)).fetchone())
             row["payload"] = json.loads(row.pop("payload_json"))
             return row
+
+        return self._write_with_retry(write)
 
     def audit_for(self, *, entity_type: str, entity_id: str | int, limit: int = 100) -> list[dict[str, Any]]:
         if isinstance(limit, bool) or not isinstance(limit, int) or not 1 <= limit <= 500:
