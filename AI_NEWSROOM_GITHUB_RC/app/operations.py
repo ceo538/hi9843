@@ -46,6 +46,8 @@ CREATE INDEX IF NOT EXISTS idx_feedback_event ON user_feedback(event_id, id);
 CREATE INDEX IF NOT EXISTS idx_audit_entity ON audit_log(entity_type, entity_id, id);
 """
 
+_EXPECTED_FEEDBACK_COLUMNS = {"id", "event_id", "feedback_type", "note", "created_at"}
+
 
 class OperationsError(ValueError):
     pass
@@ -84,6 +86,47 @@ class OperationsStore:
         except OSError:
             return str(self.path.absolute())
 
+    @staticmethod
+    def _feedback_schema_is_current(conn: sqlite3.Connection) -> bool:
+        table = conn.execute(
+            "SELECT 1 FROM sqlite_master WHERE type='table' AND name='user_feedback'"
+        ).fetchone()
+        if table is None:
+            return True
+        columns = {row[1] for row in conn.execute("PRAGMA table_info(user_feedback)").fetchall()}
+        foreign_keys = conn.execute("PRAGMA foreign_key_list(user_feedback)").fetchall()
+        fk_targets = {(row[3], row[2], row[4]) for row in foreign_keys}
+        return _EXPECTED_FEEDBACK_COLUMNS.issubset(columns) and (
+            "event_id",
+            "news_revisions",
+            "id",
+        ) in fk_targets
+
+    @staticmethod
+    def _legacy_feedback_name(conn: sqlite3.Connection) -> str:
+        base = "user_feedback_legacy"
+        candidate = base
+        suffix = 1
+        while conn.execute(
+            "SELECT 1 FROM sqlite_master WHERE type='table' AND name=?", (candidate,)
+        ).fetchone():
+            suffix += 1
+            candidate = f"{base}_{suffix}"
+        return candidate
+
+    def _migrate_legacy_feedback_schema(self, conn: sqlite3.Connection) -> None:
+        if self._feedback_schema_is_current(conn):
+            return
+        legacy_name = self._legacy_feedback_name(conn)
+        # Legacy DEV builds used a different feedback table that referenced the
+        # old `events` table and required `user_ref`. Preserve it verbatim under
+        # a backup name instead of deleting historical data. The current table is
+        # then recreated against canonical `news_revisions` IDs.
+        conn.execute(f'ALTER TABLE user_feedback RENAME TO "{legacy_name}"')
+        # An index keeps its name after ALTER TABLE RENAME and can block creation
+        # of the canonical index on the replacement table.
+        conn.execute("DROP INDEX IF EXISTS idx_feedback_event")
+
     def _ensure_schema(self) -> None:
         key = self._path_key()
         if key in self._initialized_paths:
@@ -99,6 +142,7 @@ class OperationsStore:
             try:
                 conn.execute("PRAGMA foreign_keys=ON")
                 conn.execute("PRAGMA busy_timeout=30000")
+                self._migrate_legacy_feedback_schema(conn)
                 conn.executescript(_SCHEMA)
             finally:
                 conn.close()
