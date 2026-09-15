@@ -15,10 +15,11 @@ class OrchestratorError(ValueError):
 
 
 class NewsroomOrchestrator:
-    """Run deterministic newsroom stages, preserve drafts, and audit decisions.
+    """Run articleization stages only after an explicit operator decision.
 
-    Publication is intentionally outside this coordinator. Every returned draft
-    and editor-approved version still requires a separate human publication act.
+    This coordinator creates a local working draft from a selected event. It has
+    no publisher/CMS delivery capability. Finished text remains inside AI NEWSROOM
+    until the operator copies it and pastes it into an external system manually.
     """
 
     def __init__(self, db_path: Path | str | None = None) -> None:
@@ -85,6 +86,7 @@ class NewsroomOrchestrator:
         )
         return {
             "event_id": int(event_id),
+            "articleization_selected": True,
             "priority": analysis["priority"],
             "analysis": analysis,
             "fact_check": fact_check,
@@ -93,6 +95,9 @@ class NewsroomOrchestrator:
             "draft": draft,
             "article_version": article_version,
             "editorial_ready": editorial_ready,
+            "publication_enabled": False,
+            "delivery_mode": "MANUAL_COPY_ONLY",
+            # Backward-compatible safety fields retained for existing callers.
             "publication_allowed": False,
             "human_approval_required": True,
             "audit": self.ops.audit_for(entity_type="EVENT", entity_id=event_id, limit=20),
