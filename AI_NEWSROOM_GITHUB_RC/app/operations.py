@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import json
 import sqlite3
+import threading
 import time
 from contextlib import contextmanager
 from datetime import datetime, timezone
@@ -66,11 +67,42 @@ def _text(name: str, value: str, limit: int, *, allow_empty: bool = False) -> st
 
 
 class OperationsStore:
+    # The dashboard creates short-lived store objects per request. Re-running
+    # NewsStore schema migration and operations DDL for every feedback GET/POST
+    # creates avoidable SQLite write contention under the 30-second dashboard
+    # refresh. Initialize each DB path only once per API process instead.
+    _init_lock = threading.Lock()
+    _initialized_paths: set[str] = set()
+
     def __init__(self, db_path: Path | str | None = None) -> None:
         self.path = Path(db_path) if db_path is not None else default_db_path()
-        NewsStore(self.path)
-        with self._connect() as conn:
-            conn.executescript(_SCHEMA)
+        self._ensure_schema()
+
+    def _path_key(self) -> str:
+        try:
+            return str(self.path.resolve())
+        except OSError:
+            return str(self.path.absolute())
+
+    def _ensure_schema(self) -> None:
+        key = self._path_key()
+        if key in self._initialized_paths:
+            return
+        with self._init_lock:
+            if key in self._initialized_paths:
+                return
+            # NewsStore owns the canonical base schema. Do this once, then create
+            # the operations tables using a dedicated connection with WAL/busy
+            # timeout so API startup can coexist with the collector process.
+            NewsStore(self.path)
+            conn = sqlite3.connect(self.path, timeout=30.0, isolation_level=None)
+            try:
+                conn.execute("PRAGMA foreign_keys=ON")
+                conn.execute("PRAGMA busy_timeout=30000")
+                conn.executescript(_SCHEMA)
+            finally:
+                conn.close()
+            self._initialized_paths.add(key)
 
     @contextmanager
     def _connect(self):
@@ -93,14 +125,20 @@ class OperationsStore:
             try:
                 with self._connect() as conn:
                     return operation(conn)
+            except sqlite3.IntegrityError as exc:
+                # Keep database exceptions inside the public OperationsError
+                # contract so FastAPI returns a controlled 400 instead of 500.
+                raise OperationsError("database constraint rejected the operation") from exc
             except sqlite3.OperationalError as exc:
                 message = str(exc).lower()
                 retryable = "locked" in message or "busy" in message
                 if not retryable:
-                    raise
+                    raise OperationsError(f"database operation failed: {type(exc).__name__}") from exc
                 if attempt >= len(delays):
                     raise OperationsError("database is busy; retry the operation") from exc
                 time.sleep(delays[attempt])
+            except sqlite3.DatabaseError as exc:
+                raise OperationsError(f"database operation failed: {type(exc).__name__}") from exc
         raise OperationsError("database write failed")
 
     def upsert_watchlist(
