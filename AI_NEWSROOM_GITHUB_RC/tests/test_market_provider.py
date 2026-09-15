@@ -22,15 +22,20 @@ class Session:
         self.posts = 0
         self.gets = 0
 
-    def post(self, url, json, timeout):
+    def post(self, url, headers, json, timeout):
         self.posts += 1
         assert url.endswith("/oauth2/tokenP")
         assert json["grant_type"] == "client_credentials"
+        assert headers["Content-Type"] == "application/json"
+        assert headers["Accept"] == "text/plain"
+        assert headers["charset"] == "UTF-8"
+        assert headers["User-Agent"].startswith("Mozilla/5.0")
         return Response({"access_token": "token-value", "expires_in": 3600})
 
     def get(self, url, headers, params, timeout):
         self.gets += 1
         assert headers["authorization"] == "Bearer token-value"
+        assert headers["User-Agent"].startswith("Mozilla/5.0")
         assert params["FID_INPUT_ISCD"] == "005930"
         return Response(
             {
