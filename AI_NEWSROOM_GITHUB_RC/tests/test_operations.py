@@ -61,6 +61,51 @@ def test_feedback_retries_transient_sqlite_lock(tmp_path, monkeypatch):
     assert attempts["count"] == 2
 
 
+def test_legacy_feedback_schema_is_preserved_and_replaced(tmp_path):
+    path, event = make_event(tmp_path)
+    with sqlite3.connect(path) as conn:
+        conn.execute("CREATE TABLE events (id INTEGER PRIMARY KEY)")
+        conn.execute("INSERT INTO events(id) VALUES (1)")
+        conn.execute(
+            """
+            CREATE TABLE user_feedback (
+                id INTEGER NOT NULL,
+                event_id INTEGER,
+                article_id INTEGER,
+                user_ref VARCHAR(200) NOT NULL,
+                feedback_type VARCHAR(40) NOT NULL,
+                note TEXT,
+                created_at DATETIME NOT NULL,
+                PRIMARY KEY (id),
+                FOREIGN KEY(event_id) REFERENCES events(id)
+            )
+            """
+        )
+        conn.execute(
+            "INSERT INTO user_feedback(id,event_id,article_id,user_ref,feedback_type,note,created_at) VALUES(1,1,NULL,'legacy','USEFUL','old','2026-09-15T00:00:00+00:00')"
+        )
+
+    OperationsStore._initialized_paths.discard(str(path.resolve()))
+    ops = OperationsStore(path)
+
+    with sqlite3.connect(path) as conn:
+        columns = {row[1] for row in conn.execute("PRAGMA table_info(user_feedback)")}
+        foreign_keys = conn.execute("PRAGMA foreign_key_list(user_feedback)").fetchall()
+        backups = [
+            row[0]
+            for row in conn.execute(
+                "SELECT name FROM sqlite_master WHERE type='table' AND name LIKE 'user_feedback_legacy%'"
+            ).fetchall()
+        ]
+        assert {"id", "event_id", "feedback_type", "note", "created_at"}.issubset(columns)
+        assert any(row[2] == "news_revisions" and row[3] == "event_id" for row in foreign_keys)
+        assert backups
+        assert conn.execute(f'SELECT COUNT(*) FROM "{backups[0]}"').fetchone()[0] == 1
+
+    item = ops.record_feedback(event_id=event["id"], feedback_type="NEEDS_REVIEW", note="migrated")
+    assert item["feedback_type"] == "NEEDS_REVIEW"
+
+
 def test_audit_payload_round_trip(tmp_path):
     path, event = make_event(tmp_path)
     ops = OperationsStore(path)
