@@ -1,3 +1,5 @@
+import subprocess
+import sys
 from datetime import datetime, timedelta, timezone
 from pathlib import Path
 
@@ -173,3 +175,17 @@ def test_safe_cycle_records_fatal_failure_and_recovers_next_cycle(tmp_path):
     assert recovered["status"] == "SUCCESS"
     assert recovered["state"]["consecutive_fatal_errors"] == 0
     assert runtime.status()["runner"]["status"] == "SUCCESS"
+
+
+def test_production_runner_script_direct_launch_resolves_project_imports(tmp_path):
+    project_root = Path(__file__).resolve().parents[1]
+    script = project_root / "scripts" / "production_runner.py"
+    result = subprocess.run(
+        [sys.executable, str(script), "--help"],
+        cwd=tmp_path,
+        capture_output=True,
+        text=True,
+        timeout=30,
+    )
+    assert result.returncode == 0, result.stderr
+    assert "--poll-seconds" in result.stdout
