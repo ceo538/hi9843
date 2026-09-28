@@ -14,7 +14,9 @@ Primary source/layout references:
 - https://new.real.download.dws.co.kr/common/master/kosdaq_code.mst.zip
 
 The parser uses CP949 names, fixed ASCII trailer lengths 227/221 (excluding newline),
-security group, ETP, SPAC and preferred-share fields. TLS verification remains enabled.
+security group, ETP, SPAC and preferred-share fields. ETP 1/2 denotes ETF and 3/4
+denotes ETN even when a generic security group is present; ETP 5 certificates are excluded.
+TLS verification remains enabled.
 A layout change fails validation; do not silently disable validation to accept it.
 
 An additive SQLite migration preserves company IDs, news links and old snapshots.

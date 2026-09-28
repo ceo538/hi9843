@@ -77,7 +77,8 @@ def master_line(market, ticker="000001", group="ST", etp="0", spac="N", preferre
 @pytest.mark.parametrize("market", ["KOSPI", "KOSDAQ"])
 @pytest.mark.parametrize("flags,kind", [({}, "EQUITY"), ({"spac": "Y"}, "SPAC"),
     ({"preferred": "2", "ticker": "00001K"}, "PREFERRED"), ({"group": "EF"}, "ETF"),
-    ({"group": "EN", "etp": "3"}, "ETN"), ({"group": "RT"}, "REIT"), ({"group": "EW"}, "OTHER")])
+    ({"group": "EN", "etp": "3"}, "ETN"), ({"group": "MF", "etp": "1"}, "ETF"),
+    ({"group": "ST", "etp": "2"}, "ETF"), ({"etp": "5"}, "OTHER"), ({"group": "RT"}, "REIT"), ({"group": "EW"}, "OTHER")])
 def test_official_master_layout_and_product_policy(market, flags, kind):
     parsed = parse_master(master_line(market, **flags) + b"\r\n", market)
     assert parsed[0]["security_type"] == kind

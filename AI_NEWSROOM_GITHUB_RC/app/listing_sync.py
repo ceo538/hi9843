@@ -56,10 +56,12 @@ class UniversePolicy:
 
 
 def classify(group: str, etp: str, spac: str, preferred: str) -> str:
-    if group in {"EF", "FE"}:
+    if group in {"EF", "FE"} or etp in {"1", "2"}:
         return "ETF"
     if group == "EN" or etp in {"3", "4"}:
         return "ETN"
+    if etp == "5":
+        return "OTHER"  # Listed beneficiary certificates, not company shares.
     if group == "ST":
         if spac == "Y":
             return "SPAC"
