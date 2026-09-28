@@ -11,6 +11,7 @@ from app.ingestion import default_db_path
 from app.intelligence import IntelligenceStore
 from app.maintenance import DatabaseMaintenance
 from app.market_worker import MarketSnapshotWorker
+from app.listing_sync import KISListingSync
 from app.newsroom_cycle import NewsroomCycle
 from app.runtime import RuntimeStore
 from app.source_registry import SourceRegistry
@@ -51,6 +52,7 @@ class ProductionRunner:
         registry: Any | None = None,
         runtime: Any | None = None,
         company_sync: Any | None = None,
+        listing_sync: Any | None = None,
         backup_dir: Path | str | None = None,
         owner_id: str | None = None,
     ) -> None:
@@ -62,6 +64,9 @@ class ProductionRunner:
         self.maintenance = maintenance or DatabaseMaintenance(self.path)
         self.disable_dart = _env_flag("AI_NEWSROOM_DISABLE_DART")
         self.disable_kis = _env_flag("AI_NEWSROOM_DISABLE_KIS")
+        # Exchange membership is independent of optional DART enrichment.
+        # False explicitly disables this component for offline/custom runners.
+        self.listing_sync = KISListingSync(IntelligenceStore(self.path)) if listing_sync is None else listing_sync
         self.company_sync = company_sync
         if self.company_sync is None and not self.disable_dart and os.getenv("DART_API_KEY"):
             self.company_sync = OpenDartCompanySync(IntelligenceStore(self.path))
@@ -228,17 +233,6 @@ class ProductionRunner:
 
             self.runtime.renew_lease("production_runner", self.owner_id, ttl_seconds=900, now=now)
 
-            if self.disable_kis:
-                state["market_status"] = "DISABLED_BY_CONFIG"
-            elif force or _due(state.get("last_market_at"), market_interval_minutes, now):
-                try:
-                    tasks["market"] = self.market_worker.collect()
-                    state["last_market_at"] = stamp
-                    state["market_status"] = str(tasks["market"].get("status") or "UNKNOWN")
-                except Exception as exc:
-                    task_errors["market"] = type(exc).__name__
-                    state["market_status"] = "FAILED"
-
             company_due = self.company_sync is not None and self._company_sync_due(
                 state,
                 now=now,
@@ -258,6 +252,32 @@ class ProductionRunner:
                     state["company_master_status"] = "FAILED"
             elif self.company_sync is None:
                 state["company_master_status"] = "DISABLED_NO_DART_API_KEY"
+
+            listing_interval = 60 if state.get("listing_master_status") == "FAILED" else company_sync_interval_minutes
+            if self.disable_kis or self.listing_sync is False:
+                state["listing_master_status"] = "DISABLED_BY_CONFIG"
+            elif force or _due(state.get("last_listing_sync_attempt_at"), listing_interval, now):
+                state["last_listing_sync_attempt_at"] = stamp
+                try:
+                    tasks["listing_master"] = self.listing_sync.sync()
+                    state["listing_master_status"] = "SUCCESS"
+                    state["last_listing_sync_at"] = stamp
+                except Exception as exc:
+                    task_errors["listing_master"] = type(exc).__name__
+                    state["listing_master_status"] = "FAILED"
+
+            if self.disable_kis:
+                state["market_status"] = "DISABLED_BY_CONFIG"
+            elif force or (state.get("market_progress") or {}).get("remaining_count", 0) > 0 or _due(state.get("last_market_at"), market_interval_minutes, now):
+                try:
+                    tasks["market"] = self.market_worker.collect()
+                    state["last_market_at"] = stamp
+                    if tasks["market"].get("status") != "SKIPPED_LOCKED":
+                        state["market_progress"] = {key: value for key, value in tasks["market"].items() if key != "results"}
+                    state["market_status"] = str(tasks["market"].get("status") or "UNKNOWN")
+                except Exception as exc:
+                    task_errors["market"] = type(exc).__name__
+                    state["market_status"] = "FAILED"
 
             self.runtime.renew_lease("production_runner", self.owner_id, ttl_seconds=900, now=now)
 
@@ -319,3 +339,4 @@ class ProductionRunner:
             }
         finally:
             self.runtime.release_lease("production_runner", self.owner_id)
+

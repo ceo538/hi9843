@@ -7,7 +7,7 @@ from xml.etree import ElementTree
 
 import requests
 
-from app.intelligence import IntelligenceStore
+from app.intelligence import IntelligenceStore, _now
 
 
 class CompanySyncError(RuntimeError):
@@ -73,8 +73,13 @@ class OpenDartCompanySync:
 
     def sync(self) -> dict:
         rows = self.fetch()
-        synced = 0
-        for row in rows:
-            self.store.register_company(ticker=row["ticker"], name=row["name"], market="KRX")
-            synced += 1
-        return {"source": "OpenDART", "fetched": len(rows), "synced": synced}
+        # corpCode has no listing-market or security-type field. Never infer KRX,
+        # KOSPI/KOSDAQ, active listing, or overwrite verified listing metadata.
+        with self.store._connect() as conn:
+            conn.executemany(
+                "INSERT INTO companies(ticker,name,market,created_at,corp_code) VALUES(?,?,'UNKNOWN',?,?) "
+                "ON CONFLICT(ticker) DO UPDATE SET name=excluded.name,corp_code=excluded.corp_code",
+                [(r["ticker"], r["name"], _now(), r["corp_code"]) for r in rows],
+            )
+        return {"source": "OpenDART", "fetched": len(rows), "synced": len(rows)}
+

@@ -9,10 +9,31 @@ from typing import Any
 import requests
 
 from app.ingestion import default_db_path
+from app.listing_sync import domestic_ticker
 
 
 class MarketProviderError(RuntimeError):
-    pass
+    def __init__(self, message: str, *, rate_limited: bool = False,
+                 retry_after: float = 60, fatal: bool = False):
+        super().__init__(message)
+        self.rate_limited = rate_limited
+        self.retry_after = retry_after
+        self.fatal = fatal
+
+
+def _check_response(response) -> None:
+    status = getattr(response, "status_code", None)
+    if status == 429:
+        try:
+            delay = float(response.headers.get("Retry-After", "60"))
+        except (TypeError, ValueError):
+            delay = 60
+        raise MarketProviderError("KIS rate limit", rate_limited=True,
+                                  retry_after=max(60, min(delay, 3600)))
+    if status in {401, 403}:
+        raise MarketProviderError("KIS authorization rejected", fatal=True)
+    response.raise_for_status()
+
 
 
 def _default_token_cache_path() -> Path:
@@ -124,13 +145,15 @@ class KISProvider:
                 },
                 timeout=15,
             )
-            response.raise_for_status()
+            _check_response(response)
             data = response.json()
         except (requests.RequestException, ValueError) as exc:
             raise MarketProviderError("KIS token request failed") from exc
         token = str(data.get("access_token") or "").strip()
         if not token:
-            raise MarketProviderError("KIS token response missing access_token")
+            if data.get("msg_cd") == "EGW00201":
+                raise MarketProviderError("KIS token rate limit", rate_limited=True)
+            raise MarketProviderError("KIS token response missing access_token", fatal=True)
         expires_in = data.get("expires_in", 3600)
         try:
             seconds = max(60, min(int(expires_in), 86400))
@@ -144,8 +167,8 @@ class KISProvider:
 
     def quote(self, ticker: str) -> dict:
         ticker = str(ticker or "").strip()
-        if not ticker.isdigit() or len(ticker) != 6:
-            raise MarketProviderError("KIS domestic ticker must be six digits")
+        if not domestic_ticker(ticker):
+            raise MarketProviderError("KIS domestic ticker must be six uppercase alphanumeric characters")
         headers = {
             **self._base_headers(),
             "authorization": f"Bearer {self._access_token()}",
@@ -162,13 +185,14 @@ class KISProvider:
                 params=params,
                 timeout=15,
             )
-            response.raise_for_status()
+            _check_response(response)
             data = response.json()
         except (requests.RequestException, ValueError) as exc:
             raise MarketProviderError("KIS quote request failed") from exc
         if str(data.get("rt_cd")) != "0":
-            msg = str(data.get("msg1") or "KIS quote error")[:200]
-            raise MarketProviderError(msg)
+            if data.get("msg_cd") == "EGW00201":
+                raise MarketProviderError("KIS rate limit", rate_limited=True)
+            raise MarketProviderError("KIS quote rejected")
         output = data.get("output") or {}
         try:
             price = float(output["stck_prpr"])
@@ -192,3 +216,4 @@ class KISProvider:
             "volume": number("acml_vol"),
             "source": "KIS",
         }
+

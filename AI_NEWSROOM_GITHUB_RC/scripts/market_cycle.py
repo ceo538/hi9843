@@ -3,7 +3,10 @@ from __future__ import annotations
 import argparse
 import json
 import time
+import sys
 from pathlib import Path
+
+sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
 
 from app.market_worker import MarketSnapshotWorker
 
@@ -13,10 +16,12 @@ def main() -> int:
     parser.add_argument("--interval-minutes", type=int, default=0, help="Repeat every N minutes; 0 runs once")
     parser.add_argument("--report", default="reports/market-cycle.json")
     parser.add_argument("--recent-event-limit", type=int, default=100)
+    parser.add_argument("--batch-size", type=int, default=None, help="Maximum attempts per call (1..500; PULSE_BATCH_SIZE, default 100)")
+    parser.add_argument("--requests-per-second", type=float, default=None, help="Sequential quote rate (PULSE_REQUESTS_PER_SECOND, default 1)")
     args = parser.parse_args()
     if args.interval_minutes and args.interval_minutes < 1:
         raise SystemExit("--interval-minutes must be 0 or >= 1")
-    worker = MarketSnapshotWorker()
+    worker = MarketSnapshotWorker(batch_size=args.batch_size, requests_per_second=args.requests_per_second)
     report_path = Path(args.report)
     report_path.parent.mkdir(parents=True, exist_ok=True)
     while True:
@@ -29,9 +34,10 @@ def main() -> int:
             "error_count": report["error_count"],
         }, ensure_ascii=False), flush=True)
         if not args.interval_minutes:
-            return 0 if report["status"] in {"SUCCESS", "DEGRADED", "NO_TARGETS"} else 1
+            return 0 if report["status"] in {"SUCCESS", "DEGRADED", "NO_TARGETS", "IN_PROGRESS", "SKIPPED_LOCKED"} else 1
         time.sleep(args.interval_minutes * 60)
 
 
 if __name__ == "__main__":
     raise SystemExit(main())
+

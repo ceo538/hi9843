@@ -46,4 +46,5 @@ def test_sync_populates_company_master(tmp_path):
     assert result["synced"] == 2
     companies = store.list_companies()
     assert {row["ticker"] for row in companies} == {"005930", "000660"}
-    assert all(row["market"] == "KRX" for row in companies)
+    assert all(row["market"] == "UNKNOWN" for row in companies)
+

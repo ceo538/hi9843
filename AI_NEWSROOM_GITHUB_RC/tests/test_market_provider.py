@@ -165,4 +165,6 @@ def test_provider_error_message_is_bounded():
     provider = KISProvider(app_key="key", app_secret="secret", session=BadSession())
     with pytest.raises(MarketProviderError) as exc:
         provider.quote("005930")
-    assert len(str(exc.value)) == 200
+    assert str(exc.value) == "KIS quote rejected"
+    assert "x" * 10 not in str(exc.value)
+

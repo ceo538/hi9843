@@ -74,6 +74,7 @@ def runner_for(tmp_path):
     maintenance = FakeMaintenance()
     runner = ProductionRunner(
         path,
+        listing_sync=False,
         runtime=runtime,
         registry=registry,
         newsroom_cycle=newsroom,
@@ -152,6 +153,7 @@ def test_safe_cycle_records_fatal_failure_and_recovers_next_cycle(tmp_path):
     registry = FlakyRegistry()
     runner = ProductionRunner(
         path,
+        listing_sync=False,
         runtime=runtime,
         registry=registry,
         newsroom_cycle=FakeNewsroomCycle(),
@@ -189,3 +191,4 @@ def test_production_runner_script_direct_launch_resolves_project_imports(tmp_pat
     )
     assert result.returncode == 0, result.stderr
     assert "--poll-seconds" in result.stdout
+

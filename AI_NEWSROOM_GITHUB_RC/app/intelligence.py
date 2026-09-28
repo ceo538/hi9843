@@ -1,6 +1,8 @@
 from __future__ import annotations
 
 import re
+import math
+from contextlib import nullcontext
 import sqlite3
 from datetime import datetime, timedelta, timezone
 from pathlib import Path
@@ -109,6 +111,23 @@ class IntelligenceStore:
     def _init_schema(self) -> None:
         with self._connect() as conn:
             conn.executescript(_SCHEMA)
+            # Additive migration: retain IDs, event links and historical snapshots.
+            conn.execute("BEGIN IMMEDIATE")
+            existing = {row["name"] for row in conn.execute("PRAGMA table_info(companies)")}
+            for name, definition in {
+                "market_source": "TEXT",
+                "market_source_url": "TEXT",
+                "market_verified_at": "TEXT",
+                "listing_generation": "TEXT",
+                "listing_active": "INTEGER NOT NULL DEFAULT 0",
+                "security_type": "TEXT NOT NULL DEFAULT 'UNKNOWN'",
+                "security_group": "TEXT",
+                "corp_code": "TEXT",
+            }.items():
+                if name not in existing:
+                    conn.execute(f"ALTER TABLE companies ADD COLUMN {name} {definition}")
+            conn.execute("CREATE INDEX IF NOT EXISTS idx_company_universe "
+                         "ON companies(listing_active,market,security_type)")
 
     @staticmethod
     def _row(row: sqlite3.Row | None) -> dict[str, Any] | None:
@@ -125,7 +144,8 @@ class IntelligenceStore:
         with self._connect() as conn:
             conn.execute(
                 "INSERT INTO companies(ticker,name,market,created_at) VALUES(?,?,?,?) "
-                "ON CONFLICT(ticker) DO UPDATE SET name=excluded.name, market=excluded.market",
+                "ON CONFLICT(ticker) DO UPDATE SET name=excluded.name, market=CASE WHEN companies.market_source IS NULL "
+                "THEN excluded.market ELSE companies.market END",
                 (ticker, name, market, _now()),
             )
             row = conn.execute("SELECT * FROM companies WHERE ticker=?", (ticker,)).fetchone()
@@ -197,17 +217,20 @@ class IntelligenceStore:
         source: str,
         change_pct: float | None = None,
         volume: float | None = None,
+        _connection: sqlite3.Connection | None = None,
     ) -> dict[str, Any]:
         ticker = _ticker(ticker)
-        if isinstance(price, bool) or float(price) <= 0:
+        if isinstance(price, bool) or not math.isfinite(float(price)) or float(price) <= 0:
             raise IntelligenceError("price must be positive")
-        if volume is not None and (isinstance(volume, bool) or float(volume) < 0):
+        if volume is not None and (isinstance(volume, bool) or not math.isfinite(float(volume)) or float(volume) < 0):
             raise IntelligenceError("volume must be non-negative")
+        if change_pct is not None and (isinstance(change_pct, bool) or not math.isfinite(float(change_pct))):
+            raise IntelligenceError("change_pct must be finite")
         source = str(source or "").strip()
         if not source or len(source) > 100:
             raise IntelligenceError("source is required and must be <= 100 chars")
         observed = _utc(observed_at)
-        with self._connect() as conn:
+        with (nullcontext(_connection) if _connection is not None else self._connect()) as conn:
             company = conn.execute("SELECT id FROM companies WHERE ticker=?", (ticker,)).fetchone()
             if company is None:
                 raise IntelligenceError("company must be registered first")
@@ -277,3 +300,4 @@ class IntelligenceStore:
             "reaction_price": float(after["price"]),
             "horizon_minutes": horizon_minutes,
         }
+

@@ -48,6 +48,8 @@ def test_target_tickers_include_watchlist_and_verified_event_links(tmp_path):
         subject_key="000660", subject_type="TICKER", label="SK하이닉스",
         priority="P1", reason="테스트",
     )
+    with intel._connect() as conn:
+        conn.execute("UPDATE companies SET listing_active=1,market_source='KIS_MASTER',market_verified_at='2026-09-29',security_type='EQUITY'")
     worker = MarketSnapshotWorker(path, provider_factory=lambda: FakeProvider())
     assert worker.target_tickers() == ["000660", "005930"]
 
@@ -68,3 +70,4 @@ def test_market_worker_no_targets_is_safe(tmp_path):
     worker = MarketSnapshotWorker(tmp_path / "newsroom.db", provider_factory=lambda: FakeProvider())
     report = worker.collect()
     assert report["status"] == "NO_TARGETS"
+

@@ -47,6 +47,7 @@ def _runner(tmp_path, company_sync):
     path = tmp_path / "newsroom.db"
     return ProductionRunner(
         path,
+        listing_sync=False,
         runtime=RuntimeStore(path),
         registry=FakeRegistry(),
         newsroom_cycle=FakeNewsroom(),
@@ -123,3 +124,4 @@ def test_company_master_sync_is_explicitly_disabled_without_dart_key(tmp_path, m
     assert report["status"] == "SUCCESS"
     assert report["state"]["company_master_status"] == "DISABLED_NO_DART_API_KEY"
     assert "company_master" not in report["tasks"]
+
